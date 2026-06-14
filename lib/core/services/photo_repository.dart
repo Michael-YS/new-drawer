@@ -179,7 +179,9 @@ class PhotoRepository {
 
   Future<int> insert(Photo photo) async {
     final db = await _db;
-    return await db.insert('photos', photo.toMap());
+    final id = await db.insert('photos', photo.toMap());
+    print('PhotoRepo.insert: inserted photo ${photo.path} with id $id');
+    return id;
   }
 
   Future<List<Photo>> getByStatus(PhotoStatus status) async {
@@ -268,6 +270,16 @@ class PhotoRepository {
       where: 'status IN (?, ?)',
       whereArgs: ['done', 'skipped'],
     );
+  }
+
+  Future<void> deleteAllPending() async {
+    final db = await _db;
+    await db.delete('photos', where: 'status = ?', whereArgs: ['pending']);
+  }
+
+  Future<void> deleteAllPhotos() async {
+    final db = await _db;
+    await db.delete('photos');
   }
 
   Future<Photo?> getLastProcessed() async {

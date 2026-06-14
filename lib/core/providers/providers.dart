@@ -221,8 +221,8 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
           status: PhotoStatus.pending,
         );
         await photoRepo.insert(photo);
-      } catch (_) {
-        // Skip duplicates
+      } catch (e) {
+        print('Failed to insert photo ${paths[i]}: $e');
       }
       state = state.copyWith(current: i + 1);
     }
@@ -230,10 +230,14 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
 
   Future<void> scanAll() async {
     state = const ScanProgress(isScanning: true);
+    final photoRepo = ref.read(photoRepoProvider);
+    await photoRepo.deleteAllPhotos();
     final folders = ref.read(sourceFoldersProvider).where((f) => f.enabled);
     final futures = folders.map((f) => scanFolder(f));
     await Future.wait(futures);
     state = const ScanProgress();
+    ref.read(currentPhotoProvider.notifier).refresh();
+    ref.invalidate(photoStatsProvider);
   }
 }
 
@@ -250,7 +254,9 @@ class CurrentPhotoNotifier extends StateNotifier<Photo?> {
 
   Future<void> _load() async {
     final repo = ref.read(photoRepoProvider);
-    state = await repo.getPendingFirst();
+    final photo = await repo.getPendingFirst();
+    print('_load: got photo = ${photo?.path ?? "null"}');
+    state = photo;
   }
 
   Future<void> refresh() async {

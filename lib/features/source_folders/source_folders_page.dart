@@ -13,6 +13,13 @@ class SourceFoldersPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Source Folders'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Re-scan All',
+            onPressed: () => ref.read(photoScannerProvider.notifier).scanAll(),
+          ),
+        ],
       ),
       body: folders.isEmpty
           ? Center(
@@ -86,7 +93,6 @@ class SourceFoldersPage extends ConsumerWidget {
     if (result != null) {
       final name = result.split('/').last;
       await ref.read(sourceFoldersProvider.notifier).add(result, name);
-      ref.read(photoScannerProvider.notifier).scanAll();
     }
   }
 

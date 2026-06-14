@@ -13,6 +13,7 @@ class App extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rootDirs = ref.watch(targetRootDirsProvider);
+    final scanProgress = ref.watch(photoScannerProvider);
     final defaultRootDir = rootDirs.isEmpty ? null : (rootDirs.where((d) => d.isDefault).firstOrNull ?? rootDirs.first);
 
     return MaterialApp(
@@ -31,6 +32,32 @@ class App extends ConsumerWidget {
         '/source-folders': (context) => const SourceFoldersPage(),
         '/target-folders': (context) => const TargetFoldersPage(),
         '/settings': (context) => const SettingsPage(),
+      },
+      builder: (context, child) {
+        if (scanProgress.isScanning) {
+          return Column(
+            children: [
+              LinearProgressIndicator(
+                value: scanProgress.fraction,
+                backgroundColor: Colors.grey[300],
+              ),
+              if (scanProgress.currentFolder != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Scanning ${scanProgress.currentFolder}: ${scanProgress.current}/${scanProgress.total}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(child: child ?? const SizedBox()),
+            ],
+          );
+        }
+        return child ?? const SizedBox();
       },
     );
   }

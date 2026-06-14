@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.6.1
   sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.4
+  sqlite3_flutter_libs: ^0.5.28
   path_provider: ^2.1.5
   path: ^1.9.1
   file_picker: ^8.1.7

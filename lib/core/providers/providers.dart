@@ -4,6 +4,7 @@ import '../models/source_folder.dart';
 import '../models/target_root_dir.dart';
 import '../models/target_folder.dart';
 import '../models/photo.dart';
+import '../models/scan_progress.dart';
 import '../services/file_service.dart';
 import '../services/photo_repository.dart';
 
@@ -49,6 +50,7 @@ class SourceFoldersNotifier extends StateNotifier<List<SourceFolder>> {
     final photoRepo = ref.read(photoRepoProvider);
     await photoRepo.deleteBySourceFolder(id, onlyPending: true);
     state = state.where((f) => f.id != id).toList();
+    ref.read(photoScannerProvider.notifier).scanAll();
   }
 
   Future<void> toggleEnabled(int id) async {
@@ -193,41 +195,45 @@ class TargetFoldersNotifier extends StateNotifier<List<TargetFolder>> {
   }
 }
 
-final photoScannerProvider = StateNotifierProvider<PhotoScannerNotifier, bool>((ref) {
+final photoScannerProvider = StateNotifierProvider<PhotoScannerNotifier, ScanProgress>((ref) {
   return PhotoScannerNotifier(ref);
 });
 
-class PhotoScannerNotifier extends StateNotifier<bool> {
+class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
   final Ref ref;
 
-  PhotoScannerNotifier(this.ref) : super(false);
+  PhotoScannerNotifier(this.ref) : super(const ScanProgress());
 
   Future<void> scanFolder(SourceFolder folder) async {
     final fileService = ref.read(fileServiceProvider);
     final photoRepo = ref.read(photoRepoProvider);
 
     final paths = await fileService.scanFolder(folder.path, recursive: folder.recursive);
+    print('scanFolder: found ${paths.length} photos in ${folder.path}');
 
-    for (final path in paths) {
+    state = ScanProgress(isScanning: true, current: 0, total: paths.length, currentFolder: folder.displayName);
+
+    for (int i = 0; i < paths.length; i++) {
       try {
         final photo = Photo(
           sourceFolderId: folder.id!,
-          path: path,
+          path: paths[i],
           status: PhotoStatus.pending,
         );
         await photoRepo.insert(photo);
       } catch (_) {
         // Skip duplicates
       }
+      state = state.copyWith(current: i + 1);
     }
   }
 
   Future<void> scanAll() async {
-    state = true;
+    state = const ScanProgress(isScanning: true);
     final folders = ref.read(sourceFoldersProvider).where((f) => f.enabled);
     final futures = folders.map((f) => scanFolder(f));
     await Future.wait(futures);
-    state = false;
+    state = const ScanProgress();
   }
 }
 

@@ -1,10 +1,17 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
 abstract class FileService {
+  String pathForDir(String rootPath, String folderName);
+  String pathForFile(String rootPath, String folderName, String fileName);
+  String basenameOf(String path);
+
+  Future<String?> pickDirectory();
   Future<List<String>> scanFolder(String path, {bool recursive = true});
   Future<void> createDirectory(String path);
-  Future<void> moveFile(String sourcePath, String destinationPath);
+  Future<String> moveFile(String sourcePath, String destinationPath);
+  Future<String> moveToOriginal(String sourcePath, String originalPath);
   Future<void> deleteFile(String path);
   Future<bool> fileExists(String path);
   Future<bool> directoryExists(String path);
@@ -21,6 +28,24 @@ class WindowsFileService implements FileService {
   };
 
   @override
+  String pathForDir(String rootPath, String folderName) {
+    return p.join(rootPath, folderName);
+  }
+
+  @override
+  String pathForFile(String rootPath, String folderName, String fileName) {
+    return p.join(rootPath, folderName, fileName);
+  }
+
+  @override
+  String basenameOf(String path) => p.basename(path);
+
+  @override
+  Future<String?> pickDirectory() async {
+    return await FilePicker.platform.getDirectoryPath();
+  }
+
+  @override
   Future<List<String>> scanFolder(String path, {bool recursive = true}) async {
     final directory = Directory(path);
     if (!await directory.exists()) {
@@ -28,7 +53,6 @@ class WindowsFileService implements FileService {
     }
 
     final List<String> imagePaths = [];
-
     await for (final entity in directory.list(recursive: recursive)) {
       if (entity is File) {
         final ext = p.extension(entity.path).toLowerCase();
@@ -50,10 +74,15 @@ class WindowsFileService implements FileService {
   }
 
   @override
-  Future<void> moveFile(String sourcePath, String destinationPath) async {
+  Future<String> moveFile(String sourcePath, String destinationPath) async {
     final sourceFile = File(sourcePath);
     if (!await sourceFile.exists()) {
       throw Exception('Source file does not exist: $sourcePath');
+    }
+
+    final destinationDir = Directory(p.dirname(destinationPath));
+    if (!await destinationDir.exists()) {
+      await destinationDir.create(recursive: true);
     }
 
     final destFile = File(destinationPath);
@@ -72,15 +101,16 @@ class WindowsFileService implements FileService {
 
     try {
       await sourceFile.rename(destinationPath);
-    } catch (e) {
-      if (e.toString().contains('Cross-device link')) {
-        final bytes = await sourceFile.readAsBytes();
-        await File(destinationPath).writeAsBytes(bytes);
-        await sourceFile.delete();
-      } else {
-        rethrow;
-      }
+    } on FileSystemException {
+      await sourceFile.copy(destinationPath);
+      await sourceFile.delete();
     }
+    return destinationPath;
+  }
+
+  @override
+  Future<String> moveToOriginal(String sourcePath, String originalPath) async {
+    return await moveFile(sourcePath, originalPath);
   }
 
   @override

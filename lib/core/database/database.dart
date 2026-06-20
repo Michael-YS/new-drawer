@@ -1,15 +1,15 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 class AppDatabase {
-  static Database? _database;
+  static Future<Database>? _opening;
   static const String _dbName = 'photo_organizer.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
-  static Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+  static Future<Database> get database {
+    return _opening ??= _initDatabase();
   }
 
   static Future<Database> _initDatabase() async {
@@ -21,6 +21,7 @@ class AppDatabase {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -71,5 +72,36 @@ class AppDatabase {
         FOREIGN KEY (source_folder_id) REFERENCES source_folders(id)
       )
     ''');
+  }
+
+  static Future<void> _onUpgrade(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2) {
+      await db.transaction((txn) async {
+        await txn.delete('photos');
+        await txn.delete('target_folders');
+        await txn.delete('target_root_dirs');
+        await txn.delete('source_folders');
+        await txn.execute(
+          "DELETE FROM sqlite_sequence WHERE name IN ('photos', 'target_folders', 'target_root_dirs', 'source_folders')",
+        );
+      });
+    }
+  }
+
+  static Future<void> clearAll() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('photos');
+      await txn.delete('target_folders');
+      await txn.delete('target_root_dirs');
+      await txn.delete('source_folders');
+      await txn.execute(
+        "DELETE FROM sqlite_sequence WHERE name IN ('photos', 'target_folders', 'target_root_dirs', 'source_folders')",
+      );
+    });
   }
 }

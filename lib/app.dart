@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:collection/collection.dart';
 import 'core/providers/providers.dart';
 import 'features/setup/setup_page.dart';
 import 'features/organizer/organizer_page.dart';

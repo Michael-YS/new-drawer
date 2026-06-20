@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../core/providers/providers.dart';
 
 class SourceFoldersPage extends ConsumerWidget {
@@ -89,10 +88,19 @@ class SourceFoldersPage extends ConsumerWidget {
   }
 
   Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.getDirectoryPath();
+    final fileService = ref.read(fileServiceProvider);
+    final result = await fileService.pickDirectory();
     if (result != null) {
-      final name = result.split('/').last;
-      await ref.read(sourceFoldersProvider.notifier).add(result, name);
+      final name = fileService.basenameOf(result);
+      try {
+        await ref.read(sourceFoldersProvider.notifier).add(result, name);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to add source folder: $e')),
+          );
+        }
+      }
     }
   }
 

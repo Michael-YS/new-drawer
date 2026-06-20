@@ -179,9 +179,77 @@ class PhotoRepository {
 
   Future<int> insert(Photo photo) async {
     final db = await _db;
-    final id = await db.insert('photos', photo.toMap());
-    print('PhotoRepo.insert: inserted photo ${photo.path} with id $id');
-    return id;
+    try {
+      final id = await db.insert('photos', photo.toMap());
+      print('PhotoRepo.insert: inserted photo ${photo.path} with id $id');
+      return id;
+    } on DatabaseException catch (e) {
+      if (e.isUniqueConstraintError()) {
+        final existing = await getByPath(photo.path);
+        if (existing != null && existing.status == PhotoStatus.missing) {
+          await update(existing.copyWith(
+            status: PhotoStatus.pending,
+            destination: null,
+            originalPath: null,
+            trashedAt: null,
+            processedAt: null,
+          ));
+          print('PhotoRepo.insert: reactivated missing photo ${photo.path}');
+        }
+        return existing?.id ?? -1;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Photo?> getByPath(String path) async {
+    final db = await _db;
+    final maps = await db.query(
+      'photos',
+      where: 'path = ?',
+      whereArgs: [path],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Photo.fromMap(maps.first);
+  }
+
+  Future<Photo?> getById(int id) async {
+    final db = await _db;
+    final maps = await db.query(
+      'photos',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Photo.fromMap(maps.first);
+  }
+
+  Future<List<Photo>> getBySourceFolder(int sourceFolderId) async {
+    final db = await _db;
+    final maps = await db.query(
+      'photos',
+      where: 'source_folder_id = ?',
+      whereArgs: [sourceFolderId],
+    );
+    return maps.map((m) => Photo.fromMap(m)).toList();
+  }
+
+  Future<List<Photo>> getAll() async {
+    final db = await _db;
+    final maps = await db.query('photos');
+    return maps.map((m) => Photo.fromMap(m)).toList();
+  }
+
+  Future<void> markMissing(int id) async {
+    final db = await _db;
+    await db.update(
+      'photos',
+      {'status': PhotoStatus.missing.name},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<List<Photo>> getByStatus(PhotoStatus status) async {
@@ -245,6 +313,15 @@ class PhotoRepository {
     );
   }
 
+  Future<void> delete(int id) async {
+    final db = await _db;
+    await db.delete(
+      'photos',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> deleteBySourceFolder(int sourceFolderId, {bool onlyPending = true}) async {
     final db = await _db;
     if (onlyPending) {
@@ -266,7 +343,13 @@ class PhotoRepository {
     final db = await _db;
     await db.update(
       'photos',
-      {'status': 'pending', 'destination': null},
+      {
+        'status': 'pending',
+        'destination': null,
+        'original_path': null,
+        'trashed_at': null,
+        'processed_at': null,
+      },
       where: 'status IN (?, ?)',
       whereArgs: ['done', 'skipped'],
     );

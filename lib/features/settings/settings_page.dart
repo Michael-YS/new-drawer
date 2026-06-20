@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/database/database.dart';
+import '../../core/models/photo.dart';
 import '../../core/providers/providers.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -57,6 +59,12 @@ class SettingsPage extends ConsumerWidget {
             subtitle: const Text('Permanently delete all trashed photos'),
             onTap: () => _confirmClearTrash(context, ref),
           ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            title: const Text('Clear database', style: TextStyle(color: Colors.red)),
+            subtitle: const Text('Wipe all data: source folders, target folders, photos'),
+            onTap: () => _confirmClearDatabase(context, ref),
+          ),
           const Divider(),
           const _SectionHeader(title: 'About'),
           const ListTile(
@@ -85,7 +93,7 @@ class SettingsPage extends ConsumerWidget {
               Navigator.pop(context);
               final repo = ref.read(photoRepoProvider);
               await repo.resetAllStatus();
-              ref.read(currentPhotoProvider.notifier).refresh();
+              await ref.read(currentPhotoProvider.notifier).refresh();
               ref.invalidate(photoStatsProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -113,14 +121,83 @@ class SettingsPage extends ConsumerWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // TODO: Implement trash clearing
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Trash cleared')),
-              );
+              try {
+                final photoRepo = ref.read(photoRepoProvider);
+                final fileService = ref.read(fileServiceProvider);
+                final trashedPhotos = await photoRepo.getByStatus(PhotoStatus.trashed);
+
+                for (final photo in trashedPhotos) {
+                  if (photo.destination != null) {
+                    await fileService.deleteFile(photo.destination!);
+                  }
+                  if (photo.id != null) {
+                    await photoRepo.delete(photo.id!);
+                  }
+                }
+
+                await ref.read(currentPhotoProvider.notifier).refresh();
+                ref.invalidate(photoStatsProvider);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Trash cleared')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to clear trash: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Clear Trash'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClearDatabase(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear database?'),
+        content: const Text(
+          'This will permanently delete ALL data: source folders, target root directories, target folders, and photo records.\n\nFiles on disk are NOT touched. The app will return to the initial setup screen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              try {
+                await AppDatabase.clearAll();
+                await ref.read(sourceFoldersProvider.notifier).refresh();
+                await ref.read(targetRootDirsProvider.notifier).refresh();
+                await ref.read(targetFoldersProvider.notifier).refresh();
+                ref.read(lastActionProvider.notifier).state = null;
+                ref.invalidate(photoStatsProvider);
+                await ref.read(currentPhotoProvider.notifier).refresh();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Database cleared')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to clear database: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Clear Everything'),
           ),
         ],
       ),

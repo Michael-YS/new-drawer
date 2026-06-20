@@ -102,61 +102,68 @@ class TargetFoldersPage extends ConsumerWidget {
     }
 
     final defaultRootDir = rootDirs.firstWhere((d) => d.isDefault, orElse: () => rootDirs.first);
+    final canChooseRoot = multiMode && rootDirs.length > 1;
+    int selectedRootId = defaultRootDir.id!;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create Target Folder'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Folder name',
-                hintText: 'e.g., Vacation, Anime, Screenshots',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Create Target Folder'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Folder name',
+                  hintText: 'e.g., Vacation, Anime, Screenshots',
+                ),
               ),
-            ),
-            if (multiMode && rootDirs.length > 1) ...[
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (context, setState) {
-                  int? selectedId = defaultRootDir.id;
-                  return DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(labelText: 'Root Directory'),
-                    initialValue: selectedId,
-                    items: rootDirs.map((d) => DropdownMenuItem(
-                      value: d.id,
-                      child: Text(d.displayName),
-                    )).toList(),
-                    onChanged: (value) {
-                      if (value != null) selectedId = value;
-                    },
-                  );
-                },
-              ),
+              if (canChooseRoot) ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  decoration: const InputDecoration(labelText: 'Root Directory'),
+                  initialValue: selectedRootId,
+                  items: rootDirs.map((d) => DropdownMenuItem(
+                    value: d.id,
+                    child: Text(d.displayName),
+                  )).toList(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => selectedRootId = value);
+                  },
+                ),
+              ],
             ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (controller.text.trim().isNotEmpty) {
+                  Navigator.pop(dialogContext);
+                  try {
+                    await ref.read(targetFoldersProvider.notifier).add(
+                      controller.text.trim(),
+                      selectedRootId,
+                    );
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to create folder: $e')),
+                      );
+                    }
+                  }
+                }
+              },
+              child: const Text('Create'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (controller.text.trim().isNotEmpty) {
-                Navigator.pop(context);
-                await ref.read(targetFoldersProvider.notifier).add(
-                  controller.text.trim(),
-                  defaultRootDir.id!,
-                );
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
       ),
     );
   }

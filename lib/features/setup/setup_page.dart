@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../core/providers/providers.dart';
 
 class SetupPage extends ConsumerStatefulWidget {
@@ -14,15 +13,28 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   bool _isLoading = false;
 
   Future<void> _selectRootDirectory() async {
-    final result = await FilePicker.platform.getDirectoryPath();
+    final fileService = ref.read(fileServiceProvider);
+    final result = await fileService.pickDirectory();
     if (result != null) {
+      if (!mounted) return;
       setState(() => _isLoading = true);
-      await ref.read(targetRootDirsProvider.notifier).add(
-        result,
-        'Default',
-        isDefault: true,
-      );
-      setState(() => _isLoading = false);
+      try {
+        await ref.read(targetRootDirsProvider.notifier).add(
+          result,
+          'Default',
+          isDefault: true,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to set target directory: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
     }
   }
 

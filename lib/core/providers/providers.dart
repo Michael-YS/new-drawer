@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../models/source_folder.dart';
@@ -6,9 +8,13 @@ import '../models/target_folder.dart';
 import '../models/photo.dart';
 import '../models/scan_progress.dart';
 import '../services/file_service.dart';
+import '../services/file_service_android.dart';
 import '../services/photo_repository.dart';
 
-final fileServiceProvider = Provider<FileService>((ref) => WindowsFileService());
+final fileServiceProvider = Provider<FileService>((ref) {
+  if (Platform.isAndroid) return AndroidFileService();
+  return WindowsFileService();
+});
 
 final sourceFolderRepoProvider = Provider((ref) => SourceFolderRepository());
 final targetRootDirRepoProvider = Provider((ref) => TargetRootDirRepository());
@@ -94,7 +100,11 @@ class TargetRootDirsNotifier extends StateNotifier<List<TargetRootDir>> {
       addedAt: DateTime.now().millisecondsSinceEpoch,
     );
     final id = await repo.insert(dir);
-    state = [...state, dir.copyWith(id: id)];
+    final newDir = dir.copyWith(id: id);
+    state = [
+      ...state.map((d) => isDefault ? d.copyWith(isDefault: false) : d),
+      newDir,
+    ];
   }
 
   Future<void> setDefault(int id) async {
@@ -143,6 +153,12 @@ class TargetFoldersNotifier extends StateNotifier<List<TargetFolder>> {
 
   Future<TargetFolder> add(String name, int rootDirId) async {
     final repo = ref.read(targetFolderRepoProvider);
+    final fileService = ref.read(fileServiceProvider);
+    final rootDirs = ref.read(targetRootDirsProvider);
+    final rootDir = rootDirs.firstWhere((d) => d.id == rootDirId);
+
+    await fileService.createDirectory(fileService.pathForDir(rootDir.path, name));
+
     final folder = TargetFolder(
       rootDirId: rootDirId,
       name: name,
@@ -152,11 +168,6 @@ class TargetFoldersNotifier extends StateNotifier<List<TargetFolder>> {
     final id = await repo.insert(folder);
     final newFolder = folder.copyWith(id: id);
     state = [...state, newFolder];
-
-    final fileService = ref.read(fileServiceProvider);
-    final rootDirs = ref.read(targetRootDirsProvider);
-    final rootDir = rootDirs.firstWhere((d) => d.id == rootDirId);
-    await fileService.createDirectory(p.join(rootDir.path, name));
 
     return newFolder;
   }
@@ -208,36 +219,60 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
     final fileService = ref.read(fileServiceProvider);
     final photoRepo = ref.read(photoRepoProvider);
 
-    final paths = await fileService.scanFolder(folder.path, recursive: folder.recursive);
-    print('scanFolder: found ${paths.length} photos in ${folder.path}');
+    try {
+      final paths = await fileService.scanFolder(folder.path, recursive: folder.recursive);
+      print('scanFolder: found ${paths.length} photos in ${folder.path}');
 
-    state = ScanProgress(isScanning: true, current: 0, total: paths.length, currentFolder: folder.displayName);
+      state = ScanProgress(isScanning: true, current: 0, total: paths.length, currentFolder: folder.displayName);
 
-    for (int i = 0; i < paths.length; i++) {
-      try {
-        final photo = Photo(
-          sourceFolderId: folder.id!,
-          path: paths[i],
-          status: PhotoStatus.pending,
-        );
-        await photoRepo.insert(photo);
-      } catch (e) {
-        print('Failed to insert photo ${paths[i]}: $e');
+      for (int i = 0; i < paths.length; i++) {
+        try {
+          final photo = Photo(
+            sourceFolderId: folder.id!,
+            path: paths[i],
+            status: PhotoStatus.pending,
+          );
+          await photoRepo.insert(photo);
+        } catch (e) {
+          print('Failed to insert photo ${paths[i]}: $e');
+        }
+        state = state.copyWith(current: i + 1);
       }
-      state = state.copyWith(current: i + 1);
+
+      ref.invalidate(currentPhotoProvider);
+      ref.invalidate(photoStatsProvider);
+    } finally {
+      state = const ScanProgress();
+    }
+  }
+
+  Future<void> _markMissingForFolder(SourceFolder folder) async {
+    final fileService = ref.read(fileServiceProvider);
+    final photoRepo = ref.read(photoRepoProvider);
+    final existing = await photoRepo.getBySourceFolder(folder.id!);
+    for (final photo in existing) {
+      if (photo.status == PhotoStatus.trashed) continue;
+      if (photo.status == PhotoStatus.missing) continue;
+      final stillExists = await fileService.fileExists(photo.path);
+      if (!stillExists) {
+        await photoRepo.markMissing(photo.id!);
+      }
     }
   }
 
   Future<void> scanAll() async {
     state = const ScanProgress(isScanning: true);
-    final photoRepo = ref.read(photoRepoProvider);
-    await photoRepo.deleteAllPhotos();
-    final folders = ref.read(sourceFoldersProvider).where((f) => f.enabled);
-    final futures = folders.map((f) => scanFolder(f));
-    await Future.wait(futures);
-    state = const ScanProgress();
-    ref.read(currentPhotoProvider.notifier).refresh();
-    ref.invalidate(photoStatsProvider);
+    final folders = ref.read(sourceFoldersProvider).where((f) => f.enabled).toList();
+    try {
+      for (final folder in folders) {
+        await _markMissingForFolder(folder);
+        await scanFolder(folder);
+      }
+      ref.invalidate(currentPhotoProvider);
+      ref.invalidate(photoStatsProvider);
+    } finally {
+      state = const ScanProgress();
+    }
   }
 }
 
@@ -247,15 +282,22 @@ final currentPhotoProvider = StateNotifierProvider<CurrentPhotoNotifier, Photo?>
 
 class CurrentPhotoNotifier extends StateNotifier<Photo?> {
   final Ref ref;
+  bool _disposed = false;
 
   CurrentPhotoNotifier(this.ref) : super(null) {
     _load();
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> _load() async {
     final repo = ref.read(photoRepoProvider);
     final photo = await repo.getPendingFirst();
-    print('_load: got photo = ${photo?.path ?? "null"}');
+    if (_disposed) return;
     state = photo;
   }
 
@@ -272,14 +314,15 @@ class CurrentPhotoNotifier extends StateNotifier<Photo?> {
     final targetFoldersNotifier = ref.read(targetFoldersProvider.notifier);
 
     final rootDir = rootDirs.firstWhere((d) => d.id == target.rootDirId);
-    final destPath = p.join(rootDir.path, target.name, p.basename(state!.path));
+    final basename = fileService.basenameOf(state!.path);
+    final destPath = fileService.pathForFile(rootDir.path, target.name, basename);
 
     try {
-      await fileService.moveFile(state!.path, destPath);
+      final newUri = await fileService.moveFile(state!.path, destPath);
 
       final updated = state!.copyWith(
         status: PhotoStatus.done,
-        destination: destPath,
+        destination: newUri,
         processedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await photoRepo.update(updated);
@@ -315,21 +358,21 @@ class CurrentPhotoNotifier extends StateNotifier<Photo?> {
     final rootDirs = ref.read(targetRootDirsProvider);
 
     final defaultRootDir = rootDirs.firstWhere((d) => d.isDefault, orElse: () => rootDirs.first);
-    final trashDir = p.join(defaultRootDir.path, '.trash');
-
-    await fileService.createDirectory(trashDir);
+    await fileService.createDirectory(fileService.pathForDir(defaultRootDir.path, '.trash'));
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final ext = p.extension(state!.path);
-    final baseName = p.basenameWithoutExtension(state!.path);
-    final trashPath = p.join(trashDir, '${baseName}__$timestamp$ext');
+    final name = fileService.basenameOf(state!.path);
+    final ext = p.extension(name);
+    final baseName = p.basenameWithoutExtension(name);
+    final trashFileName = '${baseName}__$timestamp$ext';
+    final trashPath = fileService.pathForFile(defaultRootDir.path, '.trash', trashFileName);
 
-    await fileService.moveFile(state!.path, trashPath);
+    final newUri = await fileService.moveFile(state!.path, trashPath);
 
     final updated = state!.copyWith(
       status: PhotoStatus.trashed,
       originalPath: state!.path,
-      destination: trashPath,
+      destination: newUri,
       trashedAt: timestamp,
       processedAt: timestamp,
     );

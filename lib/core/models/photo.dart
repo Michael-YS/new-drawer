@@ -13,6 +13,8 @@ enum PhotoStatus {
   }
 }
 
+const _unchanged = Object();
+
 class Photo {
   final int? id;
   final int sourceFolderId;
@@ -65,20 +67,28 @@ class Photo {
     int? sourceFolderId,
     String? path,
     PhotoStatus? status,
-    String? destination,
-    String? originalPath,
-    int? trashedAt,
-    int? processedAt,
+    Object? destination = _unchanged,
+    Object? originalPath = _unchanged,
+    Object? trashedAt = _unchanged,
+    Object? processedAt = _unchanged,
   }) {
     return Photo(
       id: id ?? this.id,
       sourceFolderId: sourceFolderId ?? this.sourceFolderId,
       path: path ?? this.path,
       status: status ?? this.status,
-      destination: destination ?? this.destination,
-      originalPath: originalPath ?? this.originalPath,
-      trashedAt: trashedAt ?? this.trashedAt,
-      processedAt: processedAt ?? this.processedAt,
+      destination: identical(destination, _unchanged)
+          ? this.destination
+          : destination as String?,
+      originalPath: identical(originalPath, _unchanged)
+          ? this.originalPath
+          : originalPath as String?,
+      trashedAt: identical(trashedAt, _unchanged)
+          ? this.trashedAt
+          : trashedAt as int?,
+      processedAt: identical(processedAt, _unchanged)
+          ? this.processedAt
+          : processedAt as int?,
     );
   }
 }

@@ -118,24 +118,19 @@ jobs:
           name: android-apk
           path: dist/android
 
-      - name: Flatten Windows zip
+      - name: Rename Windows zip
         shell: bash
         run: |
           cd dist/windows
-          for f in *.zip; do
-            dir="${f%.zip}"
-            mkdir -p "$dir"
-            unzip -q "$f" -d "$dir"
-          done
+          version=${GITHUB_REF_NAME}
+          mv windows-release.zip "new-drawer-${version}-windows.zip"
+          ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/windows/**/*.exe
-            dist/windows/**/*.dll
-            dist/windows/**/sqflite.dll
-            dist/windows/**/sqlite3.dll
+            dist/windows/*.zip
             dist/android/*.apk
           generate_release_notes: true
           draft: true

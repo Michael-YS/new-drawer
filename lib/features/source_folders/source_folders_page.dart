@@ -40,6 +40,7 @@ class SourceFoldersPage extends ConsumerWidget {
           : ReorderableListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: folders.length,
+              // ignore: deprecated_member_use
               onReorder: (oldIndex, newIndex) {
                 // Reorder logic if needed
               },

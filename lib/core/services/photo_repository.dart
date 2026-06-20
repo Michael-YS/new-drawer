@@ -181,7 +181,6 @@ class PhotoRepository {
     final db = await _db;
     try {
       final id = await db.insert('photos', photo.toMap());
-      print('PhotoRepo.insert: inserted photo ${photo.path} with id $id');
       return id;
     } on DatabaseException catch (e) {
       if (e.isUniqueConstraintError()) {
@@ -194,7 +193,6 @@ class PhotoRepository {
             trashedAt: null,
             processedAt: null,
           ));
-          print('PhotoRepo.insert: reactivated missing photo ${photo.path}');
         }
         return existing?.id ?? -1;
       }

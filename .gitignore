@@ -47,6 +47,7 @@ app.*.map.json
 # Android SDK location, contains local config
 /android/local.properties
 /android/key.properties
+local.properties
 # subosito/flutter-action + Android lint
 **/GeneratedPluginRegistrant.java
 

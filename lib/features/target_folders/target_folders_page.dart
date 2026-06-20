@@ -42,6 +42,7 @@ class TargetFoldersPage extends ConsumerWidget {
           : ReorderableListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: folders.length,
+              // ignore: deprecated_member_use
               onReorder: (oldIndex, newIndex) {
                 if (newIndex > oldIndex) newIndex--;
                 ref.read(targetFoldersProvider.notifier).reorder(oldIndex, newIndex);

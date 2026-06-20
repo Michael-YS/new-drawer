@@ -221,7 +221,6 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
 
     try {
       final paths = await fileService.scanFolder(folder.path, recursive: folder.recursive);
-      print('scanFolder: found ${paths.length} photos in ${folder.path}');
 
       state = ScanProgress(isScanning: true, current: 0, total: paths.length, currentFolder: folder.displayName);
 
@@ -233,8 +232,9 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
             status: PhotoStatus.pending,
           );
           await photoRepo.insert(photo);
-        } catch (e) {
-          print('Failed to insert photo ${paths[i]}: $e');
+        } catch (_) {
+          // Skip duplicates or transient insert failures; carry on with
+          // the rest of the scan.
         }
         state = state.copyWith(current: i + 1);
       }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/app_localizations.dart';
 
 class SetupPage extends ConsumerStatefulWidget {
   const SetupPage({super.key});
@@ -29,7 +30,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to set target directory: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context).setupFailedTarget(e.toString()))),
         );
       }
     } finally {
@@ -52,7 +53,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add source folder: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context).setupFailedSource(e.toString()))),
         );
       }
     } finally {
@@ -64,12 +65,13 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final targetDirs = ref.watch(targetRootDirsProvider);
     final sourceFolders = ref.watch(sourceFoldersProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Photo Organizer Setup'),
+        title: Text(l10n.setupAppBarTitle),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -85,37 +87,35 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Welcome to Photo Organizer',
+              l10n.setupWelcome,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 24),
             _SetupSection(
               step: 1,
-              title: 'Set target root',
-              description:
-                  'Where organized photos will be stored. All category folders you create live under this directory.',
+              title: l10n.setupStep1Title,
+              description: l10n.setupStep1Description,
               isLoading: _targetLoading,
               isDone: targetDirs.isNotEmpty,
               doneSummary: targetDirs.isNotEmpty
                   ? targetDirs.first.path
                   : null,
-              buttonLabel: 'Select Target Root Directory',
+              buttonLabel: l10n.setupButtonTarget,
               buttonIcon: Icons.folder_open,
               onPressed: _selectRootDirectory,
             ),
             const SizedBox(height: 16),
             _SetupSection(
               step: 2,
-              title: 'Add a source folder',
-              description:
-                  'A folder to scan for photos. You can add more or remove this later from the source folders screen.',
+              title: l10n.setupStep2Title,
+              description: l10n.setupStep2Description,
               isLoading: _sourceLoading,
               isDone: sourceFolders.isNotEmpty,
               doneSummary: sourceFolders.isNotEmpty
                   ? sourceFolders.first.path
                   : null,
-              buttonLabel: 'Select Source Folder',
+              buttonLabel: l10n.setupButtonSource,
               buttonIcon: Icons.source_outlined,
               onPressed: _selectSourceFolder,
             ),
@@ -123,7 +123,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             if (targetDirs.isNotEmpty && sourceFolders.isNotEmpty)
               Center(
                 child: Text(
-                  'All set — proceeding to organizer…',
+                  l10n.setupAllSet,
                   style: TextStyle(color: Colors.grey.shade600),
                 ),
               ),
@@ -227,17 +227,17 @@ class _SetupSection extends StatelessWidget {
                 ),
               )
             else if (isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    SizedBox(width: 12),
-                    Text('Adding…'),
+                    const SizedBox(width: 12),
+                    Text(AppLocalizations.of(context).setupAdding),
                   ],
                 ),
               )

@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.new_drawer/saf"
+    private val CHANNEL = "com.github.Michael_YS.Drawer/saf"
     private val PICK_TREE_REQUEST = 1001
 
     private val TAG = "SafChannel"

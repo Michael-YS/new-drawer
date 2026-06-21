@@ -3,74 +3,89 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/database/database.dart';
 import '../../core/models/photo.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/app_localizations.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final showSkipped = ref.watch(showSkippedProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l10n.settingsAppBarTitle),
       ),
       body: ListView(
         children: [
-          const _SectionHeader(title: 'Source Folders'),
+          _SectionHeader(title: l10n.settingsSectionSource),
           ListTile(
             leading: const Icon(Icons.folder_outlined),
-            title: const Text('Manage Source Folders'),
-            subtitle: const Text('Add, remove, or disable source folders'),
+            title: Text(l10n.settingsManageSourceTitle),
+            subtitle: Text(l10n.settingsManageSourceSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pushNamed(context, '/source-folders'),
           ),
           const Divider(),
-          const _SectionHeader(title: 'Target Folders'),
+          _SectionHeader(title: l10n.settingsSectionTarget),
           ListTile(
             leading: const Icon(Icons.folder_copy_outlined),
-            title: const Text('Manage Target Folders'),
-            subtitle: const Text('Create and organize category folders'),
+            title: Text(l10n.settingsManageTargetTitle),
+            subtitle: Text(l10n.settingsManageTargetSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pushNamed(context, '/target-folders'),
           ),
           const Divider(),
-          const _SectionHeader(title: 'Display'),
+          _SectionHeader(title: l10n.settingsSectionDisplay),
           SwitchListTile(
             secondary: const Icon(Icons.visibility_outlined),
-            title: const Text('Show skipped photos'),
-            subtitle: const Text('Include skipped photos in the queue'),
+            title: Text(l10n.settingsShowSkippedTitle),
+            subtitle: Text(l10n.settingsShowSkippedSubtitle),
             value: showSkipped,
             onChanged: (value) {
               ref.read(showSkippedProvider.notifier).state = value;
             },
           ),
+          Consumer(
+            builder: (context, ref, _) {
+              final downscale = ref.watch(downscaleHighResProvider);
+              return SwitchListTile(
+                secondary: const Icon(Icons.high_quality_outlined),
+                title: Text(l10n.settingsDownscaleTitle),
+                subtitle: Text(l10n.settingsDownscaleSubtitle),
+                value: downscale,
+                onChanged: (v) =>
+                    ref.read(downscaleHighResProvider.notifier).state = v,
+              );
+            },
+          ),
           const Divider(),
-          const _SectionHeader(title: 'Data'),
+          _SectionHeader(title: l10n.settingsSectionData),
           ListTile(
             leading: const Icon(Icons.refresh),
-            title: const Text('Reset all processing status'),
-            subtitle: const Text('Mark all photos as pending again'),
+            title: Text(l10n.settingsResetStatusTitle),
+            subtitle: Text(l10n.settingsResetStatusSubtitle),
             onTap: () => _confirmReset(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.delete_sweep_outlined),
-            title: const Text('Clear trash'),
-            subtitle: const Text('Permanently delete all trashed photos'),
+            title: Text(l10n.settingsClearTrashTitle),
+            subtitle: Text(l10n.settingsClearTrashSubtitle),
             onTap: () => _confirmClearTrash(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-            title: const Text('Clear database', style: TextStyle(color: Colors.red)),
-            subtitle: const Text('Wipe all data: source folders, target folders, photos'),
+            title: Text(l10n.settingsClearDbTitle, style: const TextStyle(color: Colors.red)),
+            subtitle: Text(l10n.settingsClearDbSubtitle),
             onTap: () => _confirmClearDatabase(context, ref),
           ),
           const Divider(),
-          const _SectionHeader(title: 'About'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Photo Organizer'),
-            subtitle: Text('Version 1.0.0'),
+          _SectionHeader(title: l10n.settingsSectionAbout),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: Text(l10n.settingsAboutAppTitle),
+            subtitle: Text(l10n.settingsAboutAppSubtitle('1.1.0')),
           ),
         ],
       ),
@@ -78,15 +93,16 @@ class SettingsPage extends ConsumerWidget {
   }
 
   void _confirmReset(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset All Status?'),
-        content: const Text('This will mark all processed photos as pending again. Files will not be moved.'),
+        title: Text(l10n.settingsConfirmResetTitle),
+        content: Text(l10n.settingsConfirmResetMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () async {
@@ -97,11 +113,11 @@ class SettingsPage extends ConsumerWidget {
               ref.invalidate(photoStatsProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('All statuses reset')),
+                  SnackBar(content: Text(l10n.settingsSnackReset)),
                 );
               }
             },
-            child: const Text('Reset'),
+            child: Text(l10n.settingsButtonReset),
           ),
         ],
       ),
@@ -109,15 +125,16 @@ class SettingsPage extends ConsumerWidget {
   }
 
   void _confirmClearTrash(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear Trash?'),
-        content: const Text('This will permanently delete all trashed photos. This action cannot be undone.'),
+        title: Text(l10n.settingsConfirmClearTrashTitle),
+        content: Text(l10n.settingsConfirmClearTrashMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -141,18 +158,18 @@ class SettingsPage extends ConsumerWidget {
                 ref.invalidate(photoStatsProvider);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Trash cleared')),
+                    SnackBar(content: Text(l10n.settingsSnackClearTrash)),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to clear trash: $e')),
+                    SnackBar(content: Text(l10n.settingsErrorClearTrash(e.toString()))),
                   );
                 }
               }
             },
-            child: const Text('Clear Trash'),
+            child: Text(l10n.settingsButtonClearTrash),
           ),
         ],
       ),
@@ -160,17 +177,16 @@ class SettingsPage extends ConsumerWidget {
   }
 
   void _confirmClearDatabase(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear database?'),
-        content: const Text(
-          'This will permanently delete ALL data: source folders, target root directories, target folders, and photo records.\n\nFiles on disk are NOT touched. The app will return to the initial setup screen.',
-        ),
+        title: Text(l10n.settingsConfirmClearDbTitle),
+        content: Text(l10n.settingsConfirmClearDbMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -186,18 +202,18 @@ class SettingsPage extends ConsumerWidget {
                 await ref.read(currentPhotoProvider.notifier).refresh();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Database cleared')),
+                    SnackBar(content: Text(l10n.settingsSnackClearDb)),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to clear database: $e')),
+                    SnackBar(content: Text(l10n.settingsErrorClearDb(e.toString()))),
                   );
                 }
               }
             },
-            child: const Text('Clear Everything'),
+            child: Text(l10n.settingsButtonClearDb),
           ),
         ],
       ),

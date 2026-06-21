@@ -1,0 +1,178 @@
+{
+  "@@locale": "en",
+  "appTitle": "Photo Organizer",
+
+  "commonCancel": "Cancel",
+  "commonCreate": "Create",
+  "commonRemove": "Remove",
+  "commonRename": "Rename",
+
+  "appScanningProgress": "Scanning {folder}: {current}/{total}",
+  "@appScanningProgress": {
+    "placeholders": {
+      "folder": { "type": "String" },
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+
+  "setupAppBarTitle": "Photo Organizer Setup",
+  "setupWelcome": "Welcome to Photo Organizer",
+  "setupWelcomeSubtitle": "Set up your target root directory where all organized photos will be stored.",
+  "setupStep1Title": "Set target root",
+  "setupStep1Description": "Where organized photos will be stored. All category folders you create live under this directory.",
+  "setupStep2Title": "Add a source folder",
+  "setupStep2Description": "A folder to scan for photos. You can add more or remove this later from the source folders screen.",
+  "setupButtonTarget": "Select Target Root Directory",
+  "setupButtonSource": "Select Source Folder",
+  "setupAdding": "Adding…",
+  "setupAllSet": "All set — proceeding to organizer…",
+  "setupFailedTarget": "Failed to set target directory: {error}",
+  "@setupFailedTarget": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "setupFailedSource": "Failed to add source folder: {error}",
+  "@setupFailedSource": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "organizerAppBarTitle": "Photo Organizer",
+  "organizerTooltipSourceFolders": "Source Folders",
+  "organizerTooltipSettings": "Settings",
+  "organizerTextProcessed": "Processed: {done} / {total}",
+  "@organizerTextProcessed": {
+    "placeholders": {
+      "done": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "organizerTextRemaining": "{count} remaining",
+  "@organizerTextRemaining": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "organizerTextLoading": "Loading…",
+  "organizerTextError": "Error",
+  "organizerTextAllPhotosProcessed": "All photos processed!",
+  "organizerTextRescan": "Rescan for new photos",
+  "organizerTextNoTargetFolders": "No target folders",
+  "organizerTextAddFolder": "Add Folder",
+  "organizerTextNew": "New",
+  "organizerTextUndo": "Undo",
+  "organizerTextSkip": "Skip",
+  "organizerTextMove": "Move",
+  "organizerTextDel": "Del",
+  "organizerTextCannotLoadImage": "Cannot load image",
+  "organizerTextLoadError": "Load error: {error}",
+  "@organizerTextLoadError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "organizerTextFailedToMove": "Failed to move: {error}",
+  "@organizerTextFailedToMove": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "organizerDialogCreateNewFolderTitle": "Create New Folder",
+  "organizerLabelFolderName": "Folder name",
+  "organizerHintFolderName": "e.g., Vacation",
+
+  "sourceAppBarTitle": "Source Folders",
+  "sourceTooltipRescanAll": "Re-scan All",
+  "sourceTextNoFolders": "No source folders added",
+  "sourceButtonAddFolder": "Add Source Folder",
+  "sourceTooltipDisable": "Disable",
+  "sourceTooltipEnable": "Enable",
+  "sourceTooltipRemove": "Remove",
+  "sourceConfirmRemoveTitle": "Remove Source Folder?",
+  "sourceConfirmRemoveMessage": "Pending photos from this folder will be removed. Done photos will be kept.",
+  "sourceErrorAdd": "Failed to add source folder: {error}",
+  "@sourceErrorAdd": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "targetAppBarTitle": "Target Folders",
+  "targetTooltipManageRoots": "Manage Root Directories",
+  "targetTextNoFoldersYet": "No target folders yet",
+  "targetButtonAddFolder": "Add Target Folder",
+  "targetErrorNoRootFirst": "Please set up a target root directory first",
+  "targetDialogCreateTitle": "Create Target Folder",
+  "targetLabelRootDirectory": "Root Directory",
+  "targetLabelFolderName": "Folder name",
+  "targetHintFolderName": "e.g., Vacation, Anime, Screenshots",
+  "targetErrorCreateFolder": "Failed to create folder: {error}",
+  "@targetErrorCreateFolder": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "targetDialogRenameTitle": "Rename Folder",
+  "targetLabelDisplayName": "Display name",
+  "targetDialogRemoveTitle": "Remove Target Folder?",
+  "targetDialogRemoveMessage": "The folder will be removed from the list. The actual folder on disk will not be deleted.",
+  "targetDialogRootsTitle": "Root Directories",
+  "targetLabelMultiRoot": "Multi-root mode",
+  "targetSubtitleMultiRoot": "Allow multiple root directories",
+  "targetTextClose": "Close",
+
+  "settingsAppBarTitle": "Settings",
+  "settingsSectionSource": "Source Folders",
+  "settingsManageSourceTitle": "Manage Source Folders",
+  "settingsManageSourceSubtitle": "Add, remove, or disable source folders",
+  "settingsSectionTarget": "Target Folders",
+  "settingsManageTargetTitle": "Manage Target Folders",
+  "settingsManageTargetSubtitle": "Create and organize category folders",
+  "settingsSectionDisplay": "Display",
+  "settingsShowSkippedTitle": "Show skipped photos",
+  "settingsShowSkippedSubtitle": "Include skipped photos in the queue",
+  "settingsDownscaleTitle": "Downscale high-res photos",
+  "settingsDownscaleSubtitle": "Decode images at up to 2048px instead of full resolution. Recommended — fixes mosaic/pixelation on 50MP+ photos and reduces memory and load time. Disable only if you need to zoom in past 2K.",
+  "settingsSectionData": "Data",
+  "settingsResetStatusTitle": "Reset all processing status",
+  "settingsResetStatusSubtitle": "Mark all photos as pending again",
+  "settingsClearTrashTitle": "Clear trash",
+  "settingsClearTrashSubtitle": "Permanently delete all trashed photos",
+  "settingsClearDbTitle": "Clear database",
+  "settingsClearDbSubtitle": "Wipe all data: source folders, target folders, photos",
+  "settingsSectionAbout": "About",
+  "settingsAboutAppTitle": "Photo Organizer",
+  "settingsAboutAppSubtitle": "Version {version}",
+  "@settingsAboutAppSubtitle": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "settingsConfirmResetTitle": "Reset All Status?",
+  "settingsConfirmResetMessage": "This will mark all processed photos as pending again. Files will not be moved.",
+  "settingsSnackReset": "All statuses reset",
+  "settingsButtonReset": "Reset",
+  "settingsConfirmClearTrashTitle": "Clear Trash?",
+  "settingsConfirmClearTrashMessage": "This will permanently delete all trashed photos. This action cannot be undone.",
+  "settingsSnackClearTrash": "Trash cleared",
+  "settingsErrorClearTrash": "Failed to clear trash: {error}",
+  "@settingsErrorClearTrash": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "settingsButtonClearTrash": "Clear Trash",
+  "settingsConfirmClearDbTitle": "Clear database?",
+  "settingsConfirmClearDbMessage": "This will permanently delete ALL data: source folders, target root directories, target folders, and photo records.\\n\\nFiles on disk are NOT touched. The app will return to the initial setup screen.",
+  "settingsSnackClearDb": "Database cleared",
+  "settingsErrorClearDb": "Failed to clear database: {error}",
+  "@settingsErrorClearDb": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "settingsButtonClearDb": "Clear Everything"
+}

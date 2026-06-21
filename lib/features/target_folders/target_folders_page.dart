@@ -2,22 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/providers.dart';
 import '../../core/models/target_folder.dart';
+import '../../l10n/app_localizations.dart';
 
 class TargetFoldersPage extends ConsumerWidget {
   const TargetFoldersPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final folders = ref.watch(targetFoldersProvider);
     final rootDirs = ref.watch(targetRootDirsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Target Folders'),
+        title: Text(l10n.targetAppBarTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.folder_open_outlined),
-            tooltip: 'Manage Root Directories',
+            tooltip: l10n.targetTooltipManageRoots,
             onPressed: () => _showRootDirsDialog(context, ref),
           ),
         ],
@@ -29,12 +31,12 @@ class TargetFoldersPage extends ConsumerWidget {
                 children: [
                   const Icon(Icons.folder_off_outlined, size: 64, color: Colors.grey),
                   const SizedBox(height: 16),
-                  const Text('No target folders yet'),
+                  Text(l10n.targetTextNoFoldersYet),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: () => _addFolder(context, ref),
                     icon: const Icon(Icons.add),
-                    label: const Text('Add Target Folder'),
+                    label: Text(l10n.targetButtonAddFolder),
                   ),
                 ],
               ),
@@ -68,12 +70,12 @@ class TargetFoldersPage extends ConsumerWidget {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit_outlined),
-                          tooltip: 'Rename',
+                          tooltip: l10n.commonRename,
                           onPressed: () => _renameFolder(context, ref, folder),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          tooltip: 'Remove',
+                          tooltip: l10n.commonRemove,
                           onPressed: () => _confirmRemove(context, ref, folder.id!),
                         ),
                         const Icon(Icons.drag_handle),
@@ -91,13 +93,14 @@ class TargetFoldersPage extends ConsumerWidget {
   }
 
   Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController();
     final rootDirs = ref.read(targetRootDirsProvider);
     final multiMode = ref.read(multiRootModeProvider);
 
     if (rootDirs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please set up a target root directory first')),
+        SnackBar(content: Text(l10n.targetErrorNoRootFirst)),
       );
       return;
     }
@@ -110,22 +113,22 @@ class TargetFoldersPage extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Create Target Folder'),
+          title: Text(l10n.targetDialogCreateTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: controller,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Folder name',
-                  hintText: 'e.g., Vacation, Anime, Screenshots',
+                decoration: InputDecoration(
+                  labelText: l10n.targetLabelFolderName,
+                  hintText: l10n.targetHintFolderName,
                 ),
               ),
               if (canChooseRoot) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<int>(
-                  decoration: const InputDecoration(labelText: 'Root Directory'),
+                  decoration: InputDecoration(labelText: l10n.targetLabelRootDirectory),
                   initialValue: selectedRootId,
                   items: rootDirs.map((d) => DropdownMenuItem(
                     value: d.id,
@@ -141,7 +144,7 @@ class TargetFoldersPage extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(l10n.commonCancel),
             ),
             FilledButton(
               onPressed: () async {
@@ -155,13 +158,13 @@ class TargetFoldersPage extends ConsumerWidget {
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to create folder: $e')),
+                        SnackBar(content: Text(l10n.targetErrorCreateFolder(e.toString()))),
                       );
                     }
                   }
                 }
               },
-              child: const Text('Create'),
+              child: Text(l10n.commonCreate),
             ),
           ],
         ),
@@ -170,20 +173,21 @@ class TargetFoldersPage extends ConsumerWidget {
   }
 
   void _renameFolder(BuildContext context, WidgetRef ref, TargetFolder folder) {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: folder.displayName);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename Folder'),
+        title: Text(l10n.targetDialogRenameTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Display name'),
+          decoration: InputDecoration(labelText: l10n.targetLabelDisplayName),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () {
@@ -192,7 +196,7 @@ class TargetFoldersPage extends ConsumerWidget {
                 ref.read(targetFoldersProvider.notifier).rename(folder.id!, controller.text.trim());
               }
             },
-            child: const Text('Rename'),
+            child: Text(l10n.commonRename),
           ),
         ],
       ),
@@ -200,22 +204,23 @@ class TargetFoldersPage extends ConsumerWidget {
   }
 
   void _confirmRemove(BuildContext context, WidgetRef ref, int id) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove Target Folder?'),
-        content: const Text('The folder will be removed from the list. The actual folder on disk will not be deleted.'),
+        title: Text(l10n.targetDialogRemoveTitle),
+        content: Text(l10n.targetDialogRemoveMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
               ref.read(targetFoldersProvider.notifier).remove(id);
             },
-            child: const Text('Remove'),
+            child: Text(l10n.commonRemove),
           ),
         ],
       ),
@@ -223,12 +228,13 @@ class TargetFoldersPage extends ConsumerWidget {
   }
 
   void _showRootDirsDialog(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final rootDirs = ref.read(targetRootDirsProvider);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Root Directories'),
+        title: Text(l10n.targetDialogRootsTitle),
         content: SizedBox(
           width: 300,
           child: Column(
@@ -242,8 +248,8 @@ class TargetFoldersPage extends ConsumerWidget {
               )),
               const Divider(),
               SwitchListTile(
-                title: const Text('Multi-root mode'),
-                subtitle: const Text('Allow multiple root directories'),
+                title: Text(l10n.targetLabelMultiRoot),
+                subtitle: Text(l10n.targetSubtitleMultiRoot),
                 value: ref.read(multiRootModeProvider),
                 onChanged: (value) {
                   ref.read(multiRootModeProvider.notifier).state = value;
@@ -255,7 +261,7 @@ class TargetFoldersPage extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(l10n.targetTextClose),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:photo_view/photo_view.dart';
 import '../../core/providers/providers.dart';
 import '../../core/models/photo.dart';
@@ -351,6 +352,7 @@ class _PhotoView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final downscale = ref.watch(downscaleHighResProvider);
     if (photo.path.startsWith('content://')) {
       final bytesAsync = ref.watch(_photoBytesProvider(photo.path));
       return bytesAsync.when(
@@ -367,8 +369,9 @@ class _PhotoView extends ConsumerWidget {
               ),
             );
           }
+          final displayBytes = downscale ? _downscale(bytes) : bytes;
           return PhotoView(
-            imageProvider: MemoryImage(bytes),
+            imageProvider: MemoryImage(displayBytes),
             minScale: PhotoViewComputedScale.contained,
             maxScale: PhotoViewComputedScale.covered * 3,
             backgroundDecoration: const BoxDecoration(color: Colors.black),
@@ -380,7 +383,7 @@ class _PhotoView extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text('Load error: $e', style: const TextStyle(color: Colors.grey)),
             ],
           ),
@@ -394,3 +397,18 @@ class _PhotoView extends ConsumerWidget {
     );
   }
 }
+
+Uint8List _downscale(Uint8List bytes) {
+  const maxDim = _kMaxPhotoDimension;
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return bytes;
+  if (decoded.width <= maxDim && decoded.height <= maxDim) {
+    return bytes;
+  }
+  final resized = (decoded.width >= decoded.height)
+      ? img.copyResize(decoded, width: maxDim)
+      : img.copyResize(decoded, height: maxDim);
+  return Uint8List.fromList(img.encodeJpg(resized, quality: 88));
+}
+
+const _kMaxPhotoDimension = 2048;

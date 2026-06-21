@@ -45,6 +45,24 @@ class SettingsPage extends ConsumerWidget {
               ref.read(showSkippedProvider.notifier).state = value;
             },
           ),
+          Consumer(
+            builder: (context, ref, _) {
+              final downscale = ref.watch(downscaleHighResProvider);
+              return SwitchListTile(
+                secondary: const Icon(Icons.high_quality_outlined),
+                title: const Text('Downscale high-res photos'),
+                subtitle: const Text(
+                  'Decode images at up to 2048px instead of full resolution. '
+                  'Recommended — fixes mosaic/pixelation on 50MP+ photos and '
+                  'reduces memory and load time. Disable only if you need to '
+                  'zoom in past 2K.',
+                ),
+                value: downscale,
+                onChanged: (v) =>
+                    ref.read(downscaleHighResProvider.notifier).state = v,
+              );
+            },
+          ),
           const Divider(),
           const _SectionHeader(title: 'Data'),
           ListTile(

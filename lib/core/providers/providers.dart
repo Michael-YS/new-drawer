@@ -400,6 +400,8 @@ final multiRootModeProvider = StateProvider<bool>((ref) => false);
 
 final showSkippedProvider = StateProvider<bool>((ref) => false);
 
+final downscaleHighResProvider = StateProvider<bool>((ref) => true);
+
 final lastActionProvider = StateProvider<LastAction?>((ref) => null);
 
 class LastAction {

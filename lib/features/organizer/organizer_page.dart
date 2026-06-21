@@ -97,10 +97,8 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
     final stats = ref.watch(photoStatsProvider);
     final lastAction = ref.watch(lastActionProvider);
 
-    final recentFolders = targetFolders.where((f) => f.lastUsedAt != null).toList()
-      ..sort((a, b) => (b.lastUsedAt ?? 0).compareTo(a.lastUsedAt ?? 0));
-    final otherFolders = targetFolders.where((f) => f.lastUsedAt == null).toList();
-    final sortedFolders = [...recentFolders, ...otherFolders];
+    final sortedFolders = [...targetFolders]
+      ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
 
     return Scaffold(
       appBar: AppBar(

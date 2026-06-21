@@ -2,17 +2,7 @@ import 'package:flutter/services.dart';
 import 'file_service.dart';
 
 class AndroidFileService implements FileService {
-  static const _channel = MethodChannel('com.example.new_drawer/saf');
-
-  @override
-  String pathForDir(String rootPath, String folderName) {
-    return '$rootPath#$folderName';
-  }
-
-  @override
-  String pathForFile(String rootPath, String folderName, String fileName) {
-    return '$rootPath#$folderName/$fileName';
-  }
+  static const _channel = MethodChannel('com.github.Michael_YS.Drawer/saf');
 
   @override
   String basenameOf(String path) {
@@ -41,36 +31,49 @@ class AndroidFileService implements FileService {
   }
 
   @override
-  Future<void> createDirectory(String path) async {
-    final parts = _splitPath(path);
-    final name = parts.relSegments.isEmpty
-        ? throw Exception('Cannot create root directory')
-        : parts.relSegments.last;
-    final parentRel = parts.relSegments.sublist(0, parts.relSegments.length - 1).join('/');
+  Future<void> ensureSubdirectory(String rootPath, String folderName) async {
+    final parts = _splitPath(rootPath);
+    final segments = [...parts.relSegments, folderName];
+    final existing = await _findBySegments(parts.treeUri, segments);
+    if (existing != null) return;
+    final parentRel = parts.relSegments.join('/');
     await _channel.invokeMethod<void>('createDirectory', {
       'treeUri': parts.treeUri,
       'relativePath': parentRel,
-      'name': name,
+      'name': folderName,
     });
   }
 
   @override
-  Future<String> moveFile(String sourcePath, String destinationPath) async {
-    final parts = _splitPath(destinationPath);
-    if (parts.relSegments.isEmpty) {
-      throw Exception('Destination path must include filename');
-    }
-    final parentRel =
-        parts.relSegments.sublist(0, parts.relSegments.length - 1).join('/');
-    final newUri = await _channel.invokeMethod<String>('moveFile', {
-      'sourceUri': sourcePath,
-      'destTreeUri': parts.treeUri,
-      'destRelativePath': parentRel,
-    });
-    if (newUri == null) {
-      throw Exception('moveFile returned null');
-    }
-    return newUri;
+  Future<String> moveToSubdirectory(
+    String sourcePath,
+    String rootPath,
+    String folderName,
+  ) async {
+    final rootParts = _splitPath(rootPath);
+    final fileName = basenameOf(sourcePath);
+    final segments = [...rootParts.relSegments, folderName, fileName];
+    return _moveAlongSegments(sourcePath, rootParts.treeUri, segments);
+  }
+
+  @override
+  Future<String> moveToTrash(String sourcePath, String rootPath) async {
+    await ensureSubdirectory(rootPath, '.trash');
+    final rootParts = _splitPath(rootPath);
+    final name = basenameOf(sourcePath);
+    final dotIdx = name.lastIndexOf('.');
+    final ext = dotIdx >= 0 ? name.substring(dotIdx) : '';
+    final baseName = dotIdx >= 0 ? name.substring(0, dotIdx) : name;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final trashName = '${baseName}__$timestamp$ext';
+    final segments = [...rootParts.relSegments, '.trash', trashName];
+    return _moveAlongSegments(sourcePath, rootParts.treeUri, segments);
+  }
+
+  @override
+  Future<String> moveToOriginal(String sourcePath, String originalPath) async {
+    final originalParts = _splitPath(originalPath);
+    return _moveAlongSegments(sourcePath, originalParts.treeUri, originalParts.relSegments);
   }
 
   @override
@@ -101,16 +104,38 @@ class AndroidFileService implements FileService {
     return Future.value(path.startsWith('content://'));
   }
 
-  @override
-  Future<String> moveToOriginal(String sourceUri, String originalUri) async {
-    final result = await _channel.invokeMethod<String>('moveToOriginal', {
-      'sourceUri': _toDocUri(sourceUri),
-      'originalUri': _toDocUri(originalUri),
-    });
-    if (result == null) {
-      throw Exception('moveToOriginal returned null');
+  Future<String> _moveAlongSegments(
+    String sourcePath,
+    String treeUri,
+    List<String> segments,
+  ) async {
+    if (segments.isEmpty) {
+      throw Exception('Destination path must include filename');
     }
-    return result;
+    final parentRel = segments.sublist(0, segments.length - 1).join('/');
+    final newUri = await _channel.invokeMethod<String>('moveFile', {
+      'sourceUri': sourcePath,
+      'destTreeUri': treeUri,
+      'destRelativePath': parentRel,
+    });
+    if (newUri == null) {
+      throw Exception('moveFile returned null');
+    }
+    return newUri;
+  }
+
+  Future<String?> _findBySegments(String treeUri, List<String> segments) async {
+    final docId = segments.join('/');
+    final uri = '$treeUri/document/${segments.map(Uri.encodeComponent).join('%2F')}';
+    try {
+      final result = await _channel.invokeMethod<String>('findFile', {
+        'treeUri': treeUri,
+        'documentId': docId,
+      });
+      return result ?? uri;
+    } catch (_) {
+      return null;
+    }
   }
 
   _PathParts _splitPath(String path) {

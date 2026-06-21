@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 import '../models/source_folder.dart';
 import '../models/target_root_dir.dart';
 import '../models/target_folder.dart';
@@ -157,7 +156,7 @@ class TargetFoldersNotifier extends StateNotifier<List<TargetFolder>> {
     final rootDirs = ref.read(targetRootDirsProvider);
     final rootDir = rootDirs.firstWhere((d) => d.id == rootDirId);
 
-    await fileService.createDirectory(fileService.pathForDir(rootDir.path, name));
+    await fileService.ensureSubdirectory(rootDir.path, name);
 
     final folder = TargetFolder(
       rootDirId: rootDirId,
@@ -314,11 +313,13 @@ class CurrentPhotoNotifier extends StateNotifier<Photo?> {
     final targetFoldersNotifier = ref.read(targetFoldersProvider.notifier);
 
     final rootDir = rootDirs.firstWhere((d) => d.id == target.rootDirId);
-    final basename = fileService.basenameOf(state!.path);
-    final destPath = fileService.pathForFile(rootDir.path, target.name, basename);
 
     try {
-      final newUri = await fileService.moveFile(state!.path, destPath);
+      final newUri = await fileService.moveToSubdirectory(
+        state!.path,
+        rootDir.path,
+        target.name,
+      );
 
       final updated = state!.copyWith(
         status: PhotoStatus.done,
@@ -358,16 +359,9 @@ class CurrentPhotoNotifier extends StateNotifier<Photo?> {
     final rootDirs = ref.read(targetRootDirsProvider);
 
     final defaultRootDir = rootDirs.firstWhere((d) => d.isDefault, orElse: () => rootDirs.first);
-    await fileService.createDirectory(fileService.pathForDir(defaultRootDir.path, '.trash'));
-
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final name = fileService.basenameOf(state!.path);
-    final ext = p.extension(name);
-    final baseName = p.basenameWithoutExtension(name);
-    final trashFileName = '${baseName}__$timestamp$ext';
-    final trashPath = fileService.pathForFile(defaultRootDir.path, '.trash', trashFileName);
 
-    final newUri = await fileService.moveFile(state!.path, trashPath);
+    final newUri = await fileService.moveToTrash(state!.path, defaultRootDir.path);
 
     final updated = state!.copyWith(
       status: PhotoStatus.trashed,

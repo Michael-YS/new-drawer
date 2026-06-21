@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart';
+import 'l10n/app_localizations.dart';
 import 'core/providers/providers.dart';
 import 'features/setup/setup_page.dart';
 import 'features/organizer/organizer_page.dart';
@@ -20,12 +21,23 @@ class App extends ConsumerWidget {
     final setupComplete = defaultRootDir != null && sourceFolders.isNotEmpty;
 
     return MaterialApp(
-      title: 'Photo Organizer',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localeResolutionCallback: (deviceLocale, supportedLocales) {
+        if (deviceLocale == null) return const Locale('en');
+        final lang = deviceLocale.languageCode;
+        if (lang == 'zh') return deviceLocale;
+        for (final l in supportedLocales) {
+          if (l.languageCode == lang) return l;
+        }
+        return const Locale('en');
+      },
       home: setupComplete
           ? const OrganizerPage()
           : const SetupPage(),
@@ -50,7 +62,11 @@ class App extends ConsumerWidget {
                   child: Row(
                     children: [
                       Text(
-                        'Scanning ${scanProgress.currentFolder}: ${scanProgress.current}/${scanProgress.total}',
+                        AppLocalizations.of(context).appScanningProgress(
+                          scanProgress.currentFolder ?? '',
+                          scanProgress.current,
+                          scanProgress.total,
+                        ),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],

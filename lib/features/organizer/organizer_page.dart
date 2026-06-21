@@ -7,11 +7,12 @@ import 'package:image/image.dart' as img;
 import 'package:photo_view/photo_view.dart';
 import '../../core/providers/providers.dart';
 import '../../core/models/photo.dart';
+import '../../l10n/app_localizations.dart';
 
 final _photoBytesProvider =
     FutureProvider.family<Uint8List?, String>((ref, uri) async {
   if (!uri.startsWith('content://')) return null;
-  final channel = const MethodChannel('com.example.new_drawer/saf');
+  final channel = const MethodChannel('com.github.Michael_YS.Drawer/saf');
   return await channel.invokeMethod<Uint8List>('readFile', {'uri': uri});
 });
 
@@ -93,6 +94,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final currentPhoto = ref.watch(currentPhotoProvider);
     final targetFolders = ref.watch(targetFoldersProvider);
     final stats = ref.watch(photoStatsProvider);
@@ -103,17 +105,17 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Photo Organizer'),
+        title: Text(l10n.organizerAppBarTitle),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.folder_outlined),
-            tooltip: 'Source Folders',
+            tooltip: l10n.organizerTooltipSourceFolders,
             onPressed: () => Navigator.pushNamed(context, '/source-folders'),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
+            tooltip: l10n.organizerTooltipSettings,
             onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
@@ -127,18 +129,18 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'Processed: ${s.total - s.pending} / ${s.total}',
+                    l10n.organizerTextProcessed(s.total - s.pending, s.total),
                     style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    '${s.pending} remaining',
+                    l10n.organizerTextRemaining(s.pending),
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
-              loading: () => const Text('Loading...'),
-              error: (e, st) => const Text('Error'),
+              loading: () => Text(l10n.organizerTextLoading),
+              error: (e, st) => Text(l10n.organizerTextError),
             ),
           ),
           Expanded(
@@ -149,11 +151,11 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                       children: [
                         const Icon(Icons.check_circle_outline, size: 64, color: Colors.green),
                         const SizedBox(height: 16),
-                        const Text('All photos processed!', style: TextStyle(fontSize: 18)),
+                        Text(l10n.organizerTextAllPhotosProcessed, style: const TextStyle(fontSize: 18)),
                         const SizedBox(height: 8),
                         TextButton(
                           onPressed: () => ref.read(photoScannerProvider.notifier).scanAll(),
-                          child: const Text('Rescan for new photos'),
+                          child: Text(l10n.organizerTextRescan),
                         ),
                       ],
                     ),
@@ -185,12 +187,12 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('No target folders', style: TextStyle(color: Colors.grey)),
+                          Text(l10n.organizerTextNoTargetFolders, style: const TextStyle(color: Colors.grey)),
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: () => Navigator.pushNamed(context, '/target-folders'),
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add Folder'),
+                            label: Text(l10n.organizerTextAddFolder),
                           ),
                         ],
                       ),
@@ -205,7 +207,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: ActionChip(
                               avatar: const Icon(Icons.add, size: 18),
-                              label: const Text('New'),
+                              label: Text(l10n.organizerTextNew),
                               onPressed: () => _showQuickAddDialog(),
                             ),
                           );
@@ -236,7 +238,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                       child: TextButton.icon(
                         onPressed: _undo,
                         icon: const Icon(Icons.undo, size: 18),
-                        label: const Text('Undo', style: TextStyle(fontSize: 12)),
+                        label: Text(l10n.organizerTextUndo, style: const TextStyle(fontSize: 12)),
                       ),
                     )
                   else
@@ -249,14 +251,14 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                         ref.invalidate(photoStatsProvider);
                       },
                       icon: const Icon(Icons.skip_next, size: 18),
-                      label: const Text('Skip', style: TextStyle(fontSize: 12)),
+                      label: Text(l10n.organizerTextSkip, style: const TextStyle(fontSize: 12)),
                     ),
                   ),
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () => _showMoveDialog(),
                       icon: const Icon(Icons.folder_open, size: 18),
-                      label: const Text('Move', style: TextStyle(fontSize: 12)),
+                      label: Text(l10n.organizerTextMove, style: const TextStyle(fontSize: 12)),
                     ),
                   ),
                   Expanded(
@@ -267,7 +269,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                         ref.invalidate(photoStatsProvider);
                       },
                       icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Del', style: TextStyle(fontSize: 12)),
+                      label: Text(l10n.organizerTextDel, style: const TextStyle(fontSize: 12)),
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.red.shade400,
                       ),
@@ -283,23 +285,24 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
   }
 
   void _showQuickAddDialog() {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Create New Folder'),
+        title: Text(l10n.organizerDialogCreateNewFolderTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Folder name',
-            hintText: 'e.g., Vacation',
+          decoration: InputDecoration(
+            labelText: l10n.organizerLabelFolderName,
+            hintText: l10n.organizerHintFolderName,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () {
@@ -308,7 +311,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
                 _createQuickFolder(controller.text.trim());
               }
             },
-            child: const Text('Create'),
+            child: Text(l10n.commonCreate),
           ),
         ],
       ),
@@ -316,6 +319,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
   }
 
   Future<void> _showMoveDialog() async {
+    final l10n = AppLocalizations.of(context);
     final currentPhoto = ref.read(currentPhotoProvider);
     if (currentPhoto == null) return;
     final fileService = ref.read(fileServiceProvider);
@@ -324,9 +328,11 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
     ref.read(lastActionProvider.notifier).state = LastAction(photo: currentPhoto, type: ActionType.move);
     try {
       final photoRepo = ref.read(photoRepoProvider);
-      final basename = fileService.basenameOf(currentPhoto.path);
-      final destPath = fileService.pathForFile(pickedDir, '', basename);
-      final newUri = await fileService.moveFile(currentPhoto.path, destPath);
+      final newUri = await fileService.moveToSubdirectory(
+        currentPhoto.path,
+        pickedDir,
+        '',
+      );
       final updated = currentPhoto.copyWith(
         status: PhotoStatus.done,
         destination: newUri,
@@ -339,7 +345,7 @@ class _OrganizerPageState extends ConsumerState<OrganizerPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to move: $e')),
+          SnackBar(content: Text(l10n.organizerTextFailedToMove(e.toString()))),
         );
       }
     }
@@ -352,19 +358,20 @@ class _PhotoView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final downscale = ref.watch(downscaleHighResProvider);
     if (photo.path.startsWith('content://')) {
       final bytesAsync = ref.watch(_photoBytesProvider(photo.path));
       return bytesAsync.when(
         data: (bytes) {
           if (bytes == null) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.broken_image_outlined, size: 64, color: Colors.grey),
-                  SizedBox(height: 8),
-                  Text('Cannot load image', style: TextStyle(color: Colors.grey)),
+                  const Icon(Icons.broken_image_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 8),
+                  Text(l10n.organizerTextCannotLoadImage, style: const TextStyle(color: Colors.grey)),
                 ],
               ),
             );
@@ -383,8 +390,8 @@ class _PhotoView extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              SizedBox(height: 8),
-              Text('Load error: $e', style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 8),
+              Text(l10n.organizerTextLoadError(e.toString()), style: const TextStyle(color: Colors.grey)),
             ],
           ),
         ),

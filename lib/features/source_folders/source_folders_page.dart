@@ -96,14 +96,13 @@ class SourceFoldersPage extends ConsumerWidget {
     final fileService = ref.read(fileServiceProvider);
     final result = await fileService.pickDirectory();
     if (result != null) {
-      final l10n = AppLocalizations.of(context);
       final name = fileService.basenameOf(result);
       try {
         await ref.read(sourceFoldersProvider.notifier).add(result, name);
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.sourceErrorAdd(e.toString()))),
+            SnackBar(content: Text(AppLocalizations.of(context).sourceErrorAdd(e.toString()))),
           );
         }
       }

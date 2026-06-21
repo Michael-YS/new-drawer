@@ -14,8 +14,10 @@ class App extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rootDirs = ref.watch(targetRootDirsProvider);
+    final sourceFolders = ref.watch(sourceFoldersProvider);
     final scanProgress = ref.watch(photoScannerProvider);
     final defaultRootDir = rootDirs.isEmpty ? null : (rootDirs.where((d) => d.isDefault).firstOrNull ?? rootDirs.first);
+    final setupComplete = defaultRootDir != null && sourceFolders.isNotEmpty;
 
     return MaterialApp(
       title: 'Photo Organizer',
@@ -24,9 +26,9 @@ class App extends ConsumerWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: defaultRootDir == null
-          ? const SetupPage()
-          : const OrganizerPage(),
+      home: setupComplete
+          ? const OrganizerPage()
+          : const SetupPage(),
       routes: {
         '/setup': (context) => const SetupPage(),
         '/organizer': (context) => const OrganizerPage(),

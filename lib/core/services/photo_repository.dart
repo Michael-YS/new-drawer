@@ -200,6 +200,68 @@ class PhotoRepository {
     }
   }
 
+  Future<int> insertBatch(List<Photo> photos) async {
+    if (photos.isEmpty) return 0;
+    final db = await _db;
+    final newIds = <int>[];
+    await db.transaction((txn) async {
+      for (final photo in photos) {
+        try {
+          final id = await txn.insert(
+            'photos',
+            photo.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          if (id != 0) {
+            newIds.add(id);
+          } else {
+            await _reactivateIfMissing(txn, photo);
+          }
+        } on DatabaseException catch (e) {
+          if (!e.isUniqueConstraintError()) rethrow;
+          await _reactivateIfMissing(txn, photo);
+        }
+      }
+    });
+    return newIds.length;
+  }
+
+  Future<void> _reactivateIfMissing(Transaction txn, Photo photo) async {
+    final existing = await getByPathInTxn(txn, photo.path);
+    if (existing != null && existing.status == PhotoStatus.missing) {
+      await updateInTxn(
+        txn,
+        existing.copyWith(
+          status: PhotoStatus.pending,
+          destination: null,
+          originalPath: null,
+          trashedAt: null,
+          processedAt: null,
+        ),
+      );
+    }
+  }
+
+  Future<Photo?> getByPathInTxn(Transaction txn, String path) async {
+    final maps = await txn.query(
+      'photos',
+      where: 'path = ?',
+      whereArgs: [path],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Photo.fromMap(maps.first);
+  }
+
+  Future<void> updateInTxn(Transaction txn, Photo photo) async {
+    await txn.update(
+      'photos',
+      photo.toMap(),
+      where: 'id = ?',
+      whereArgs: [photo.id],
+    );
+  }
+
   Future<Photo?> getByPath(String path) async {
     final db = await _db;
     final maps = await db.query(

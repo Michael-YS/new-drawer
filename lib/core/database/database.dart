@@ -6,7 +6,7 @@ import 'package:path/path.dart';
 class AppDatabase {
   static Future<Database>? _opening;
   static const String _dbName = 'photo_organizer.db';
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
 
   static Future<Database> get database {
     return _opening ??= _initDatabase();
@@ -71,6 +71,20 @@ class AppDatabase {
         FOREIGN KEY (source_folder_id) REFERENCES source_folders(id)
       )
     ''');
+
+    await _createPhotosIndexes(db);
+  }
+
+  static Future<void> _createPhotosIndexes(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_photos_path ON photos(path)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_photos_source_folder_id ON photos(source_folder_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status)',
+    );
   }
 
   static Future<void> _onUpgrade(
@@ -88,6 +102,9 @@ class AppDatabase {
           "DELETE FROM sqlite_sequence WHERE name IN ('photos', 'target_folders', 'target_root_dirs', 'source_folders')",
         );
       });
+    }
+    if (oldVersion < 3) {
+      await _createPhotosIndexes(db);
     }
   }
 

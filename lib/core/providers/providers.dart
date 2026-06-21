@@ -224,19 +224,19 @@ class PhotoScannerNotifier extends StateNotifier<ScanProgress> {
 
       state = ScanProgress(isScanning: true, current: 0, total: paths.length, currentFolder: folder.displayName);
 
-      for (int i = 0; i < paths.length; i++) {
-        try {
-          final photo = Photo(
-            sourceFolderId: folder.id!,
-            path: paths[i],
-            status: PhotoStatus.pending,
-          );
-          await photoRepo.insert(photo);
-        } catch (_) {
-          // Skip duplicates or transient insert failures; carry on with
-          // the rest of the scan.
-        }
-        state = state.copyWith(current: i + 1);
+      const batchSize = 500;
+      for (int i = 0; i < paths.length; i += batchSize) {
+        final end = (i + batchSize).clamp(0, paths.length);
+        final batch = paths.sublist(i, end);
+        final photos = batch
+            .map((p) => Photo(
+                  sourceFolderId: folder.id!,
+                  path: p,
+                  status: PhotoStatus.pending,
+                ))
+            .toList(growable: false);
+        await photoRepo.insertBatch(photos);
+        state = state.copyWith(current: end);
       }
 
       ref.invalidate(currentPhotoProvider);

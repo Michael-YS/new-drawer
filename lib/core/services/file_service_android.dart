@@ -7,12 +7,18 @@ class AndroidFileService implements FileService {
   @override
   String basenameOf(String path) {
     if (!path.startsWith('content://')) return path.substring(path.lastIndexOf('/') + 1);
-    final uri = Uri.parse(path);
-    if (uri.pathSegments.isEmpty) return path;
-    final lastSegment = uri.pathSegments.last;
-    final decoded = Uri.decodeComponent(lastSegment);
-    final slashIdx = decoded.lastIndexOf('/');
-    return slashIdx >= 0 ? decoded.substring(slashIdx + 1) : decoded;
+    try {
+      final uri = Uri.parse(path);
+      if (uri.pathSegments.isEmpty) return path;
+      final lastSegment = uri.pathSegments.last;
+      final decoded = Uri.decodeComponent(lastSegment);
+      final slashIdx = decoded.lastIndexOf('/');
+      return slashIdx >= 0 ? decoded.substring(slashIdx + 1) : decoded;
+    } catch (_) {
+      final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+      final slashIdx = trimmed.lastIndexOf('/');
+      return slashIdx >= 0 ? trimmed.substring(slashIdx + 1) : trimmed;
+    }
   }
 
   @override

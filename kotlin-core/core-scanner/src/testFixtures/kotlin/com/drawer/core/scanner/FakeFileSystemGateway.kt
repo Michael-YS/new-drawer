@@ -21,7 +21,7 @@ class FakeFileSystemGateway : FileSystemGateway {
 
     private inner class FakeFileEntry(
         overrideName: String,
-        val content: ByteArray = ByteArray(0),
+        var content: ByteArray = ByteArray(0),
     ) : FakeEntry() {
         override val name: String = overrideName
     }
@@ -83,7 +83,7 @@ class FakeFileSystemGateway : FileSystemGateway {
     /**
      * Registers [name] as a child of [parent] with no content. Use
      * [newFile] with [content] when the test needs to exercise magic-byte
-     * sniffing.
+     * sniffing or move/copy.
      */
     fun newFile(parent: DirHandle, name: String): EntryHandle =
         newFile(parent, name, ByteArray(0))
@@ -117,5 +117,53 @@ class FakeFileSystemGateway : FileSystemGateway {
 
     override fun dirHandle(entry: EntryHandle): DirHandle? {
         return if (entry is FakeSubdirEntry) entry.asDir else null
+    }
+
+    override fun readAllBytes(entry: EntryHandle): ByteArray {
+        val file = entry as FakeFileEntry
+        return file.content.copyOf()
+    }
+
+    override fun writeAllBytes(entry: EntryHandle, bytes: ByteArray) {
+        val file = entry as FakeFileEntry
+        file.content = bytes.copyOf()
+    }
+
+    override fun createTempFile(parent: DirHandle, prefix: String): EntryHandle {
+        val dir = parent as FakeDir
+        val tempName = "$prefix${System.nanoTime()}"
+        val entry = FakeFileEntry(tempName)
+        children.getOrPut(dir) { mutableListOf() } += entry
+        return entry
+    }
+
+    override fun atomicRename(src: EntryHandle, dstParent: DirHandle, dstName: String): EntryHandle {
+        val file = src as FakeFileEntry
+        val srcParent = findParent(file) ?: error("orphan file: ${file.name}")
+        val dstDir = dstParent as FakeDir
+
+        children[srcParent]?.remove(file)
+        val renamed = FakeFileEntry(dstName, file.content.copyOf())
+        children.getOrPut(dstDir) { mutableListOf() } += renamed
+        return renamed
+    }
+
+    override fun deleteEntry(entry: EntryHandle): Boolean {
+        val fakeEntry = entry as FakeEntry
+        return roots.any { dir ->
+            children[dir]?.let { list ->
+                if (list.remove(fakeEntry)) {
+                    return true
+                }
+            }
+            false
+        }
+    }
+
+    private fun findParent(target: FakeEntry): FakeDir? {
+        for ((parent, list) in children) {
+            if (target in list) return parent
+        }
+        return null
     }
 }

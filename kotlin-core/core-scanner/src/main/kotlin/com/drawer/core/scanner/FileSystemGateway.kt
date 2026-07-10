@@ -59,4 +59,52 @@ interface FileSystemGateway {
      * implements both interfaces.
      */
     fun dirHandle(entry: EntryHandle): DirHandle?
+
+    /**
+     * Reads the full content of [entry].
+     *
+     * Used by move/copy flows that need to stage bytes through a temp file.
+     * Prefer [readMagicBytes] when only the leading prefix is needed — it
+     * avoids loading the entire file for scanners that only sniff format.
+     */
+    fun readAllBytes(entry: EntryHandle): ByteArray
+
+    /**
+     * Replaces the content of [entry] with [bytes].
+     *
+     * Caller is responsible for ensuring [entry] already exists (use
+     * [createTempFile] to make a fresh empty entry). Atomicity is the
+     * gateway's responsibility on production backends; the fake just
+     * stores the bytes.
+     */
+    fun writeAllBytes(entry: EntryHandle, bytes: ByteArray)
+
+    /**
+     * Creates a new empty file under [parent] using [prefix] as part of
+     * the name. Returns the new [EntryHandle].
+     *
+     * Used by atomic-move flows to stage a destination before deleting the
+     * source — the staging file is renamed into place in one step so a
+     * crash mid-flow cannot leave the user without their original file.
+     */
+    fun createTempFile(parent: DirHandle, prefix: String): EntryHandle
+
+    /**
+     * Renames [src] to live under [dstParent] with the name [dstName].
+     *
+     * Atomic on production backends (POSIX rename / `Files.move ATOMIC_MOVE`
+     * / `DocumentsContract.renameDocument` semantics). Returns the new
+     * [EntryHandle] representing the moved file. If a file with [dstName]
+     * already exists in [dstParent], implementations may either overwrite
+     * or reject — callers should ensure uniqueness beforehand.
+     */
+    fun atomicRename(src: EntryHandle, dstParent: DirHandle, dstName: String): EntryHandle
+
+    /**
+     * Removes [entry] from the filesystem. Returns `true` on success.
+     *
+     * No-op for entries that do not exist; returns `true` in that case so
+     * idempotent retry is safe.
+     */
+    fun deleteEntry(entry: EntryHandle): Boolean
 }

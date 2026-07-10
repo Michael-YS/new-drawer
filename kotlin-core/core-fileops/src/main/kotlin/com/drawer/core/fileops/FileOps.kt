@@ -80,6 +80,30 @@ class FileOps(private val gateway: FileSystemGateway) {
         return atomicMove(entry, trashDir, newName)
     }
 
+    /**
+     * Inverse of [trashImage]: moves [trashed] back to [originalParent]
+     * under [originalName]. If that name is already taken (rare — usually
+     * because the user dropped a new file at the original location while
+     * the old one was trashed), append the spec-mandated `_restored`
+     * suffix to avoid overwriting.
+     *
+     * Same saga guarantees as [atomicMove]. The trashed entry disappears
+     * from `.trash/` on success; the original-name collision is left
+     * untouched.
+     */
+    fun restoreTrashed(trashed: EntryHandle, originalParent: DirHandle, originalName: String): EntryHandle {
+        val targetName = if (destinationIsFree(originalParent, originalName)) {
+            originalName
+        } else {
+            "$originalName$RESTORED_SUFFIX"
+        }
+        return atomicMove(trashed, originalParent, targetName)
+    }
+
+    private fun destinationIsFree(parent: DirHandle, name: String): Boolean {
+        return gateway.listChildren(parent).none { it.name == name }
+    }
+
     private fun buildTrashName(originalName: String, timestamp: Long): String {
         val dotIdx = originalName.lastIndexOf('.')
         return if (dotIdx > 0) {
@@ -92,5 +116,6 @@ class FileOps(private val gateway: FileSystemGateway) {
     private companion object {
         const val TEMP_PREFIX = ".atomic-move-"
         const val TRASH_DIR_NAME = ".trash"
+        const val RESTORED_SUFFIX = "_restored"
     }
 }

@@ -13,8 +13,8 @@ package com.drawer.core.scanner
 class FakeFileSystemGateway : FileSystemGateway {
 
     private inner class FakeDir(overrideName: String) : DirHandle {
-        val name: String = overrideName
         override fun toString(): String = "FakeDir($name)"
+        val name: String = overrideName
     }
 
     private sealed class FakeEntry : EntryHandle
@@ -26,8 +26,12 @@ class FakeFileSystemGateway : FileSystemGateway {
         override val name: String = overrideName
     }
 
-    private inner class FakeSubdirEntry(overrideName: String) : FakeEntry() {
+    private inner class FakeSubdirEntry(
+        overrideName: String,
+        val asDir: FakeDir,
+    ) : FakeEntry(), DirHandle {
         override val name: String = overrideName
+        override fun toString(): String = "FakeSubdirEntry($name)"
     }
 
     private val roots = mutableListOf<FakeDir>()
@@ -45,19 +49,40 @@ class FakeFileSystemGateway : FileSystemGateway {
     }
 
     /**
-     * Creates a child directory under [parent]. Returned as an [EntryHandle]
-     * so callers can exercise [isDirectory] against it.
+     * Creates a child directory entry under [parent] and returns it as an
+     * [EntryHandle]. Use this when the test only needs to verify the
+     * entry shows up in [listChildren] and that [isDirectory] reports
+     * true; it does not give the caller a handle to add files inside.
      */
     fun newDir(parent: DirHandle, name: String): EntryHandle {
         val dir = parent as FakeDir
-        val entry = FakeSubdirEntry(name)
+        val childDir = FakeDir(name)
+        roots += childDir
+        children.getOrPut(childDir) { mutableListOf() }
+        val entry = FakeSubdirEntry(name, childDir)
         children.getOrPut(dir) { mutableListOf() } += entry
         return entry
     }
 
     /**
+     * Creates a child directory under [parent] and returns a [DirHandle]
+     * pointing at it so the caller can add nested files or further
+     * subdirs underneath. The child is also discoverable via
+     * [listChildren] on [parent].
+     */
+    fun newNestedDir(parent: DirHandle, name: String): DirHandle {
+        val dir = parent as FakeDir
+        val childDir = FakeDir(name)
+        roots += childDir
+        children.getOrPut(childDir) { mutableListOf() }
+        val entry = FakeSubdirEntry(name, childDir)
+        children.getOrPut(dir) { mutableListOf() } += entry
+        return childDir
+    }
+
+    /**
      * Registers [name] as a child of [parent] with no content. Use
- * [newFile] with [content] when the test needs to exercise magic-byte
+     * [newFile] with [content] when the test needs to exercise magic-byte
      * sniffing.
      */
     fun newFile(parent: DirHandle, name: String): EntryHandle =
@@ -88,5 +113,9 @@ class FakeFileSystemGateway : FileSystemGateway {
         require(len >= 0) { "len must be non-negative, got $len" }
         val file = entry as FakeFileEntry
         return file.content.copyOf(minOf(len, file.content.size))
+    }
+
+    override fun dirHandle(entry: EntryHandle): DirHandle? {
+        return if (entry is FakeSubdirEntry) entry.asDir else null
     }
 }

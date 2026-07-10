@@ -28,10 +28,7 @@ fun scanImagesFlow(root: DirHandle, gateway: FileSystemGateway): Flow<ScanEvent>
         val dir = stack.removeLast()
         for (entry in gateway.listChildren(dir)) {
             if (gateway.isDirectory(entry)) {
-                // Recursion into nested dirs requires treating an entry as a
-                // DirHandle. The gateway supplies this conversion via its
-                // own open-as-dir semantics in production impls.
-                stack.addLast(entry as DirHandle)
+                gateway.dirHandle(entry)?.let { stack.addLast(it) }
             } else if (isImageFile(entry, gateway)) {
                 emit(ScanEvent.ImageFound(entry))
             }

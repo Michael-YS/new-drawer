@@ -78,6 +78,12 @@ data class MoveImageRequest(
 )
 
 @Serializable
+data class StartScanResponse(
+    val discovered: Int,
+    val alreadyPending: Int,
+)
+
+@Serializable
 data class SettingsDto(
     val showSkipped: Boolean,
     val downscaleHighRes: Boolean,

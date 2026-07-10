@@ -330,14 +330,40 @@ private fun Route.undoRoutes(ctx: ServerContext) {
 
 private fun Route.scanRoutes(ctx: ServerContext) {
     post("/start-scan") {
-        call.respond(mapOf("scanId" to ""))
+        handleStartScan(ctx, call)
     }
     get("/next-image") {
-        call.respondText("null", io.ktor.http.ContentType.Application.Json)
+        val photo = nextPendingPhoto(ctx)
+        if (photo == null) {
+            call.respondText("null", io.ktor.http.ContentType.Application.Json)
+        } else {
+            call.respond(photo)
+        }
     }
     post("/cancel-scan") {
         call.respond(HttpStatusCode.NoContent)
     }
+}
+
+private suspend fun handleStartScan(ctx: ServerContext, call: io.ktor.server.application.ApplicationCall) {
+    val sources = Rows.listSourceFolders(ctx.db).filter { it.enabled }
+    val alreadyPending = Rows.listPhotos(ctx.db).count { it.status == "pending" }
+    var discovered = 0
+    for (sf in sources) {
+        val rootDir = ctx.gateway.dirOf(java.nio.file.Paths.get(sf.path))
+        com.drawer.core.scanner.scanImagesFlow(rootDir, ctx.gateway).collect { event ->
+            if (event is com.drawer.core.scanner.ScanEvent.ImageFound) {
+                val path = ctx.gateway.pathOf(event.entry)
+                Rows.insertPhoto(ctx.db, sf.id, path)
+                discovered++
+            }
+        }
+    }
+    call.respond(StartScanResponse(discovered = discovered, alreadyPending = alreadyPending))
+}
+
+private fun nextPendingPhoto(ctx: ServerContext): PhotoDto? {
+    return Rows.listPhotos(ctx.db).firstOrNull { it.status == "pending" }
 }
 
 // endregion

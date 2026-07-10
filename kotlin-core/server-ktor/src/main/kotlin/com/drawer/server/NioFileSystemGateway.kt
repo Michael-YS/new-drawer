@@ -44,6 +44,13 @@ class NioFileSystemGateway : FileSystemGateway {
         override fun toString(): String = "NioEntry($path)"
     }
 
+    /**
+     * Returns the absolute path string for an entry this gateway
+     * produced. Used by routes that need to persist the path into the
+     * `photos.entry_handle` BLOB column after a scan discovers a file.
+     */
+    fun pathOf(entry: EntryHandle): String = (entry as NioEntry).path.toString()
+
     override fun listChildren(dir: DirHandle): List<EntryHandle> {
         val d = dir as NioDir
         return Files.list(d.path).use { stream ->

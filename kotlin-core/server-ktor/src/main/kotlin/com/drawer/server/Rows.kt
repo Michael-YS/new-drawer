@@ -218,4 +218,131 @@ internal object Rows {
         }
         return out
     }
+
+    fun insertPhoto(db: AppDatabase, sourceFolderId: Long, entryPath: String): Long {
+        val conn = db.connection
+        conn.prepareStatement(
+            """INSERT INTO photos (source_folder_id, entry_handle, status)
+               VALUES (?, ?, 'pending')""",
+            Statement.RETURN_GENERATED_KEYS,
+        ).use { stmt ->
+            stmt.setLong(1, sourceFolderId)
+            stmt.setBytes(2, entryPath.toByteArray(Charsets.UTF_8))
+            stmt.executeUpdate()
+            stmt.generatedKeys.use { rs -> return if (rs.next()) rs.getLong(1) else -1 }
+        }
+    }
+
+    fun getPhoto(db: AppDatabase, id: Long): PhotoDto? {
+        val conn = db.connection
+        conn.prepareStatement(
+            """SELECT id, source_folder_id, entry_handle, status, destination_handle, original_handle,
+                      trashed_at, processed_at
+               FROM photos WHERE id = ?""",
+        ).use { stmt ->
+            stmt.setLong(1, id)
+            stmt.executeQuery().use { rs ->
+                if (!rs.next()) return null
+                return mapPhotoRow(rs)
+            }
+        }
+    }
+
+    fun listPhotos(db: AppDatabase, sourceFolderId: Long? = null): List<PhotoDto> {
+        val conn = db.connection
+        val out = mutableListOf<PhotoDto>()
+        val sql = buildString {
+            append("""SELECT id, source_folder_id, entry_handle, status, destination_handle, original_handle,
+                          trashed_at, processed_at FROM photos""")
+            if (sourceFolderId != null) append(" WHERE source_folder_id = ?")
+            append(" ORDER BY id")
+        }
+        val rows = if (sourceFolderId != null) {
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, sourceFolderId)
+                stmt.executeQuery().use(::mapPhotoRowSet).also(out::addAll)
+            }
+        } else {
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use(::mapPhotoRowSet).also(out::addAll)
+            }
+        }
+        return out
+    }
+
+    private fun mapPhotoRowSet(rs: java.sql.ResultSet): List<PhotoDto> {
+        val out = mutableListOf<PhotoDto>()
+        while (rs.next()) out += mapPhotoRow(rs)
+        return out
+    }
+
+    private fun mapPhotoRow(rs: java.sql.ResultSet): PhotoDto {
+        val entryBytes: ByteArray? = rs.getBytes("entry_handle")
+        val destBytes: ByteArray? = rs.getBytes("destination_handle")
+        val origBytes: ByteArray? = rs.getBytes("original_handle")
+        return PhotoDto(
+            id = rs.getLong("id"),
+            sourceFolderId = rs.getLong("source_folder_id"),
+            entryPath = entryBytes?.toString(Charsets.UTF_8),
+            status = rs.getString("status"),
+            destinationPath = destBytes?.toString(Charsets.UTF_8),
+            originalPath = origBytes?.toString(Charsets.UTF_8),
+            trashedAt = rs.getLong("trashed_at").takeIf { !rs.wasNull() },
+            processedAt = rs.getLong("processed_at").takeIf { !rs.wasNull() },
+        )
+    }
+
+    fun markPhotoMoved(db: AppDatabase, id: Long, destinationPath: String, processedAt: Long) {
+        db.connection.prepareStatement(
+            """UPDATE photos SET status = 'done', destination_handle = ?, processed_at = ?
+               WHERE id = ?""",
+        ).use { stmt ->
+            stmt.setBytes(1, destinationPath.toByteArray(Charsets.UTF_8))
+            stmt.setLong(2, processedAt)
+            stmt.setLong(3, id)
+            stmt.executeUpdate()
+        }
+    }
+
+    fun markPhotoUndone(db: AppDatabase, id: Long) {
+        db.connection.prepareStatement(
+            """UPDATE photos SET status = 'pending', destination_handle = NULL, processed_at = NULL
+               WHERE id = ?""",
+        ).use { stmt ->
+            stmt.setLong(1, id)
+            stmt.executeUpdate()
+        }
+    }
+
+    fun markPhotoTrashed(db: AppDatabase, id: Long, originalPath: String, trashedAt: Long) {
+        db.connection.prepareStatement(
+            """UPDATE photos SET status = 'trashed', original_handle = ?, destination_handle = NULL,
+                      trashed_at = ?, processed_at = ?
+               WHERE id = ?""",
+        ).use { stmt ->
+            stmt.setBytes(1, originalPath.toByteArray(Charsets.UTF_8))
+            stmt.setLong(2, trashedAt)
+            stmt.setLong(3, trashedAt)
+            stmt.setLong(4, id)
+            stmt.executeUpdate()
+        }
+    }
+
+    fun resetPhotoStatuses(db: AppDatabase) {
+        db.connection.createStatement().use { stmt ->
+            stmt.executeUpdate(
+                """UPDATE photos
+                   SET status = 'pending', destination_handle = NULL, original_handle = NULL,
+                       trashed_at = NULL, processed_at = NULL
+                   WHERE status IN ('done', 'skipped')""",
+            )
+        }
+    }
+
+    fun sourceFolderPath(db: AppDatabase, id: Long): String? {
+        db.connection.prepareStatement("SELECT path FROM source_folders WHERE id = ?").use { stmt ->
+            stmt.setLong(1, id)
+            stmt.executeQuery().use { rs -> return if (rs.next()) rs.getString("path") else null }
+        }
+    }
 }

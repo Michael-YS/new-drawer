@@ -62,11 +62,19 @@ data class CreateTargetFolderRequest(
 data class PhotoDto(
     val id: Long,
     val sourceFolderId: Long,
+    val entryPath: String?,
     val status: String,
     val destinationPath: String?,
     val originalPath: String?,
     val trashedAt: Long?,
     val processedAt: Long?,
+)
+
+@Serializable
+data class MoveImageRequest(
+    val photoId: Long,
+    val rootDirId: Long,
+    val destinationFolderName: String,
 )
 
 @Serializable

@@ -17,9 +17,14 @@ class FakeFileSystemGateway : FileSystemGateway {
         override fun toString(): String = "FakeDir($name)"
     }
 
-    private inner class FakeEntry(overrideName: String) : EntryHandle {
+    private sealed class FakeEntry : EntryHandle
+
+    private inner class FakeFileEntry(overrideName: String) : FakeEntry() {
         override val name: String = overrideName
-        override fun toString(): String = "FakeEntry($name)"
+    }
+
+    private inner class FakeSubdirEntry(overrideName: String) : FakeEntry() {
+        override val name: String = overrideName
     }
 
     private val roots = mutableListOf<FakeDir>()
@@ -37,13 +42,24 @@ class FakeFileSystemGateway : FileSystemGateway {
     }
 
     /**
+     * Creates a child directory under [parent]. Returned as an [EntryHandle]
+     * so callers can exercise [isDirectory] against it.
+     */
+    fun newDir(parent: DirHandle, name: String): EntryHandle {
+        val dir = parent as FakeDir
+        val entry = FakeSubdirEntry(name)
+        children.getOrPut(dir) { mutableListOf() } += entry
+        return entry
+    }
+
+    /**
      * Registers [name] as a child of [parent]. Does not enforce uniqueness
      * — two files with the same name under the same parent are allowed to
      * let tests model duplicate-name scenarios.
      */
     fun newFile(parent: DirHandle, name: String): EntryHandle {
         val dir = parent as FakeDir
-        val entry = FakeEntry(name)
+        val entry = FakeFileEntry(name)
         children.getOrPut(dir) { mutableListOf() } += entry
         return entry
     }
@@ -51,5 +67,9 @@ class FakeFileSystemGateway : FileSystemGateway {
     override fun listChildren(dir: DirHandle): List<EntryHandle> {
         val fakeDir = dir as FakeDir
         return children[fakeDir].orEmpty().toList()
+    }
+
+    override fun isDirectory(entry: EntryHandle): Boolean {
+        return entry is FakeSubdirEntry
     }
 }

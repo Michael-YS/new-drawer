@@ -19,9 +19,19 @@ interface FileSystemGateway {
      * Lists the immediate children of [dir]. Order is implementation-defined.
      *
      * Returns only direct children, not descendants. The caller is
-     * responsible for recursing into subdirectories if needed.
+     * responsible for recursing into subdirectories if needed. Each entry
+     * may be a file or a directory; call [isDirectory] to distinguish.
      *
      * @return entries in the order the platform reports them; may be empty.
      */
     fun listChildren(dir: DirHandle): List<EntryHandle>
+
+    /**
+     * Reports whether [entry] is a directory.
+     *
+     * Used by traversal code after [listChildren] returns a polymorphic
+     * [EntryHandle] to decide whether to recurse or to hand the entry to
+     * the image filter.
+     */
+    fun isDirectory(entry: EntryHandle): Boolean
 }

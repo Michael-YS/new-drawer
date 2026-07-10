@@ -19,7 +19,10 @@ class FakeFileSystemGateway : FileSystemGateway {
 
     private sealed class FakeEntry : EntryHandle
 
-    private inner class FakeFileEntry(overrideName: String) : FakeEntry() {
+    private inner class FakeFileEntry(
+        overrideName: String,
+        val content: ByteArray = ByteArray(0),
+    ) : FakeEntry() {
         override val name: String = overrideName
     }
 
@@ -53,13 +56,21 @@ class FakeFileSystemGateway : FileSystemGateway {
     }
 
     /**
-     * Registers [name] as a child of [parent]. Does not enforce uniqueness
-     * — two files with the same name under the same parent are allowed to
-     * let tests model duplicate-name scenarios.
+     * Registers [name] as a child of [parent] with no content. Use
+ * [newFile] with [content] when the test needs to exercise magic-byte
+     * sniffing.
      */
-    fun newFile(parent: DirHandle, name: String): EntryHandle {
+    fun newFile(parent: DirHandle, name: String): EntryHandle =
+        newFile(parent, name, ByteArray(0))
+
+    /**
+     * Registers [name] as a child of [parent] with [content] as its bytes.
+     * Does not enforce uniqueness — two files with the same name under the
+     * same parent are allowed to let tests model duplicate-name scenarios.
+     */
+    fun newFile(parent: DirHandle, name: String, content: ByteArray): EntryHandle {
         val dir = parent as FakeDir
-        val entry = FakeFileEntry(name)
+        val entry = FakeFileEntry(name, content)
         children.getOrPut(dir) { mutableListOf() } += entry
         return entry
     }
@@ -71,5 +82,11 @@ class FakeFileSystemGateway : FileSystemGateway {
 
     override fun isDirectory(entry: EntryHandle): Boolean {
         return entry is FakeSubdirEntry
+    }
+
+    override fun readMagicBytes(entry: EntryHandle, len: Int): ByteArray {
+        require(len >= 0) { "len must be non-negative, got $len" }
+        val file = entry as FakeFileEntry
+        return file.content.copyOf(minOf(len, file.content.size))
     }
 }

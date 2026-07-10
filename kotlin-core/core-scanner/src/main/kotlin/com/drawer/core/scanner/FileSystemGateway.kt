@@ -34,4 +34,17 @@ interface FileSystemGateway {
      * the image filter.
      */
     fun isDirectory(entry: EntryHandle): Boolean
+
+    /**
+     * Reads up to [len] bytes from the start of [entry].
+     *
+     * Used by [isImageFile] to sniff magic bytes — extension matching is
+     * unreliable because users rename files. Returns fewer than [len]
+     * bytes when the entry is shorter than [len]; returns an empty array
+     * for an empty entry.
+     *
+     * Behavior for directories is unspecified; callers should branch on
+     * [isDirectory] first.
+     */
+    fun readMagicBytes(entry: EntryHandle, len: Int): ByteArray
 }

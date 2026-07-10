@@ -107,4 +107,13 @@ interface FileSystemGateway {
      * idempotent retry is safe.
      */
     fun deleteEntry(entry: EntryHandle): Boolean
+
+    /**
+     * Ensures a subdirectory named [name] exists under [parent]. Creates
+     * it if missing; returns the existing or newly-created [DirHandle].
+     *
+     * Used by file-ops flows that need a guaranteed target directory
+     * (e.g. trashImage pre-creating `.trash/` on first use). Idempotent.
+     */
+    fun ensureDirectory(parent: DirHandle, name: String): DirHandle
 }

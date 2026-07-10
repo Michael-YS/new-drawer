@@ -61,7 +61,36 @@ class FileOps(private val gateway: FileSystemGateway) {
         return atomicMove(current, originalParent, originalName)
     }
 
+    /**
+     * Moves [entry] into a `.trash/` subdirectory under [trashParent],
+     * renaming to `<basename>__<unixMs><ext>` so files trashed in the
+     * same millisecond don't collide.
+     *
+     * Creates `.trash/` if it does not already exist. The resulting
+     * [EntryHandle] lives inside `.trash/` and the original entry is gone
+     * from its former location. The unix-millisecond suffix doubles as
+     * the trashed-at timestamp the spec records on the photo row.
+     *
+     * Same saga guarantees as [atomicMove]: failure mid-staging rolls
+     * back and leaves the source at its original location.
+     */
+    fun trashImage(entry: EntryHandle, trashParent: DirHandle): EntryHandle {
+        val trashDir = gateway.ensureDirectory(trashParent, TRASH_DIR_NAME)
+        val newName = buildTrashName(entry.name, System.currentTimeMillis())
+        return atomicMove(entry, trashDir, newName)
+    }
+
+    private fun buildTrashName(originalName: String, timestamp: Long): String {
+        val dotIdx = originalName.lastIndexOf('.')
+        return if (dotIdx > 0) {
+            "${originalName.substring(0, dotIdx)}__$timestamp${originalName.substring(dotIdx)}"
+        } else {
+            "${originalName}__$timestamp"
+        }
+    }
+
     private companion object {
         const val TEMP_PREFIX = ".atomic-move-"
+        const val TRASH_DIR_NAME = ".trash"
     }
 }

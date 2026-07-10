@@ -160,6 +160,18 @@ class FakeFileSystemGateway : FileSystemGateway {
         }
     }
 
+    override fun ensureDirectory(parent: DirHandle, name: String): DirHandle {
+        val dir = parent as FakeDir
+        val existing = children[dir].orEmpty().filterIsInstance<FakeSubdirEntry>().firstOrNull { it.name == name }
+        if (existing != null) return existing.asDir
+        val newDir = FakeDir(name)
+        roots += newDir
+        children.getOrPut(newDir) { mutableListOf() }
+        val entry = FakeSubdirEntry(name, newDir)
+        children.getOrPut(dir) { mutableListOf() } += entry
+        return newDir
+    }
+
     private fun findParent(target: FakeEntry): FakeDir? {
         for ((parent, list) in children) {
             if (target in list) return parent

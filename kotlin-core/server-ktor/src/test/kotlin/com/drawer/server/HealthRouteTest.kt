@@ -1,9 +1,13 @@
 package com.drawer.server
 
+import com.drawer.core.db.AppDatabase
+import com.drawer.core.fileops.FileOps
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -15,12 +19,16 @@ import kotlin.test.assertEquals
 class HealthRouteTest {
 
     @Test
-    fun `GET health returns 200 ok`() = testApplication {
-        application {
-            configureServer()
-        }
+    fun `GET health returns 200 ok`(@TempDir tmp: Path) = testApplication {
+        application { configureServer(newTestContext(tmp)) }
         val response = client.get("/health")
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals("ok", response.bodyAsText())
+    }
+
+    private fun newTestContext(tmp: Path): ServerContext {
+        val db = AppDatabase(":memory:").apply { open() }
+        val gateway = NioFileSystemGateway()
+        return ServerContext(db, FileOps(gateway), gateway)
     }
 }

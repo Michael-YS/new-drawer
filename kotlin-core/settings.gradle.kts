@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 include(":core-scanner")
 include(":core-fileops")
+include(":core-db")

@@ -49,6 +49,18 @@ class FileOps(private val gateway: FileSystemGateway) {
         }
     }
 
+    /**
+     * Inverse of [atomicMove]: moves [current] back to [originalParent]
+     * under [originalName]. Same saga and rollback guarantees apply.
+     *
+     * Callers are responsible for storing the original parent + name (the
+     * server-side undo log keeps these per the merged-refactor decision
+     * to track undo history in-memory on the backend).
+     */
+    fun undoMove(current: EntryHandle, originalParent: DirHandle, originalName: String): EntryHandle {
+        return atomicMove(current, originalParent, originalName)
+    }
+
     private companion object {
         const val TEMP_PREFIX = ".atomic-move-"
     }

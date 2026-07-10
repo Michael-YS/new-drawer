@@ -3,6 +3,12 @@ package com.drawer.core.scanner
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
+/**
+ * Contract test for [FileSystemGateway.listChildren].
+ *
+ * One test = one behavior. Add more tests as new behaviors land on the
+ * gateway interface; keep each test focused on a single observable.
+ */
 class FileSystemGatewayListChildrenTest {
 
     @Test

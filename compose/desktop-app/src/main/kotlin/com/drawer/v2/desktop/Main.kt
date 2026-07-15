@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.drawer.v2.domain.FileFingerprint
+import com.drawer.v2.domain.MediaMetadata
 import com.drawer.v2.domain.PhotoCandidate
 import com.drawer.v2.domain.SourceRoot
 import com.drawer.v2.domain.SuppressedItem
@@ -627,7 +628,7 @@ private fun ConflictDialog(
                     Text("Existing")
                     DesktopPhoto(conflict.existing.ref.token, Modifier.height(140.dp).fillMaxWidth())
                     val metadata = conflict.existing.metadata
-                    Text(metadata?.let { "${it.name}\n${it.sizeBytes} bytes\nModified: ${it.modifiedAtEpochMs}" } ?: "Metadata unavailable")
+                    Text(metadata?.let(::metadataSummary) ?: "Metadata unavailable")
                 }
             }
         },
@@ -643,8 +644,15 @@ private fun ConflictDialog(
 
 @Composable
 private fun PhotoMetadata(photo: PhotoCandidate) {
-    val metadata = photo.metadata
-    Text("${metadata.name}\n${metadata.sizeBytes} bytes\nModified: ${metadata.modifiedAtEpochMs}")
+    Text(metadataSummary(photo.metadata))
+}
+
+private fun metadataSummary(metadata: MediaMetadata): String = buildString {
+    append(metadata.name)
+    append("\n${metadata.sizeBytes} bytes")
+    if (metadata.width != null && metadata.height != null) append("\n${metadata.width} × ${metadata.height}")
+    metadata.createdAtEpochMs?.let { append("\nCreated: $it") }
+    append("\nModified: ${metadata.modifiedAtEpochMs}")
 }
 
 @Composable

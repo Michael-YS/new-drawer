@@ -4,6 +4,8 @@ import com.drawer.v2.storage.StorageEntryKind
 import com.drawer.v2.storage.clearDirectoryContents
 import com.drawer.v2.storage.summarizeDirectory
 import kotlinx.coroutines.runBlocking
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,6 +48,21 @@ class NioStorageGatewayTest {
 
             assertNotNull(entry)
             assertEquals(StorageEntryKind.FILE, entry.kind)
+        } finally {
+            Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+
+    @Test
+    fun `metadata includes decodable image dimensions`() = runBlocking {
+        val root = Files.createTempDirectory("drawer-nio-metadata")
+        try {
+            val image = root.resolve("photo.png")
+            ImageIO.write(BufferedImage(12, 7, BufferedImage.TYPE_INT_RGB), "png", image.toFile())
+            val metadata = NioStorageGateway().metadata(NioStorageGateway().file(image))
+
+            assertEquals(12, metadata?.width)
+            assertEquals(7, metadata?.height)
         } finally {
             Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
         }

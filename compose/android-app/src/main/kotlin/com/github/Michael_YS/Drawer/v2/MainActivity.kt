@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.drawer.v2.domain.FileFingerprint
+import com.drawer.v2.domain.MediaMetadata
 import com.drawer.v2.domain.PhotoCandidate
 import com.drawer.v2.domain.SourceRoot
 import com.drawer.v2.domain.StorageRef
@@ -397,9 +398,9 @@ private fun AndroidDrawerApp() {
             title = { Text("A photo with this name already exists") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Incoming: ${current.candidate.metadata.name}, ${current.candidate.metadata.sizeBytes} bytes")
+                    Text("Incoming:\n${metadataSummary(current.candidate.metadata)}")
                     AndroidImage(current.candidate.file, Modifier.height(120.dp).fillMaxWidth())
-                    Text(current.existing.metadata?.let { "Existing: ${it.name}, ${it.sizeBytes} bytes, modified ${it.modifiedAtEpochMs}" } ?: "Existing metadata unavailable")
+                    Text(current.existing.metadata?.let { "Existing:\n${metadataSummary(it)}" } ?: "Existing metadata unavailable")
                     AndroidImage(current.existing.ref, Modifier.height(120.dp).fillMaxWidth())
                 }
             },
@@ -575,7 +576,7 @@ private fun AndroidPhoto(photo: PhotoCandidate?, modifier: Modifier = Modifier) 
     } else {
         Column {
             AndroidImage(photo.file, modifier)
-            Text("${photo.metadata.name} • ${photo.metadata.sizeBytes} bytes • modified ${photo.metadata.modifiedAtEpochMs}")
+            Text(metadataSummary(photo.metadata))
         }
     }
 }
@@ -607,6 +608,14 @@ private fun decodePreview(context: android.content.Context, ref: StorageRef): an
         }
         context.contentResolver.openInputStream(documentUri).use { BitmapFactory.decodeStream(it, null, options) }?.asImageBitmap()
     }.getOrNull()
+
+private fun metadataSummary(metadata: MediaMetadata): String = buildString {
+    append(metadata.name)
+    append("\n${metadata.sizeBytes} bytes")
+    if (metadata.width != null && metadata.height != null) append("\n${metadata.width} × ${metadata.height}")
+    metadata.createdAtEpochMs?.let { append("\nCreated: $it") }
+    append("\nModified: ${metadata.modifiedAtEpochMs}")
+}
 
 private suspend fun uniqueTrashName(storage: SafStorageGateway, trash: StorageRef, original: String): String {
     if (storage.findChild(trash, original) == null) return original

@@ -9,6 +9,7 @@ import com.drawer.v2.storage.StorageEntryKind
 import com.drawer.v2.storage.StorageGateway
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import javax.imageio.ImageIO
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
@@ -51,11 +52,14 @@ class NioStorageGateway : StorageGateway {
         val filePath = path(file)
         if (!Files.isRegularFile(filePath, NOFOLLOW_LINKS)) return null
         val attrs = Files.readAttributes(filePath, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+        val dimensions = imageDimensions(filePath)
         return MediaMetadata(
             name = filePath.fileName.toString(),
             sizeBytes = attrs.size(),
             modifiedAtEpochMs = attrs.lastModifiedTime().toMillis(),
             createdAtEpochMs = attrs.creationTime().toMillis(),
+            width = dimensions?.first,
+            height = dimensions?.second,
         )
     }
 
@@ -138,4 +142,16 @@ class NioStorageGateway : StorageGateway {
         require(name.none { it in "\\/:*?\"<>|" }) { "name contains an unsupported character" }
         require(!name.endsWith('.') && !name.endsWith(' ')) { "name must not end in a dot or space" }
     }
+
+    private fun imageDimensions(file: Path): Pair<Int, Int>? = runCatching {
+        ImageIO.createImageInputStream(file.toFile())?.use { input ->
+            val reader = ImageIO.getImageReaders(input).asSequence().firstOrNull() ?: return@use null
+            try {
+                reader.input = input
+                reader.getWidth(0) to reader.getHeight(0)
+            } finally {
+                reader.dispose()
+            }
+        }
+    }.getOrNull()
 }

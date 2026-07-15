@@ -51,7 +51,7 @@ fun scanImages(
                     StorageEntryKind.DIRECTORY -> if (entry.ref !in excludedDirectories) directories.add(entry.ref)
                     StorageEntryKind.OTHER -> Unit
                     StorageEntryKind.FILE -> {
-                        val metadata = entry.metadata ?: runCatching { storage.metadata(entry.ref) }.getOrNull()
+                        val metadata = runCatching { storage.metadata(entry.ref) }.getOrNull() ?: entry.metadata
                         if (metadata == null) {
                             emit(ScanEvent.Problem(entry.ref, "无法读取文件元信息"))
                             return@forEach

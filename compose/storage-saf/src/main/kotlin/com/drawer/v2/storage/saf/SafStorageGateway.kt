@@ -55,7 +55,9 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
         val token = token(file)
         resolver.query(token.documentUri, DOCUMENT_PROJECTION, null, null, null).use { cursor ->
             if (cursor == null || !cursor.moveToFirst()) return null
-            return metadataFromCursor(cursor)
+            val metadata = metadataFromCursor(cursor)
+            val dimensions = imageDimensions(token.documentUri)
+            return metadata.copy(width = dimensions?.first, height = dimensions?.second)
         }
     }
 
@@ -169,6 +171,12 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
         sizeBytes = cursor.long(DocumentsContract.Document.COLUMN_SIZE),
         modifiedAtEpochMs = cursor.long(DocumentsContract.Document.COLUMN_LAST_MODIFIED),
     )
+
+    private fun imageDimensions(uri: Uri): Pair<Int, Int>? = runCatching {
+        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri).use { input -> android.graphics.BitmapFactory.decodeStream(input, null, options) }
+        if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
+    }.getOrNull()
 
     private fun Cursor.string(column: String): String = getString(getColumnIndexOrThrow(column)).orEmpty()
     private fun Cursor.long(column: String): Long = getLong(getColumnIndexOrThrow(column))

@@ -3,6 +3,7 @@ package com.drawer.v2.transaction
 import com.drawer.v2.domain.OperationJournalEntry
 import com.drawer.v2.domain.OperationJournalStore
 import com.drawer.v2.domain.OperationStage
+import com.drawer.v2.domain.FileFingerprint
 import com.drawer.v2.domain.StorageRef
 import com.drawer.v2.storage.StorageGateway
 
@@ -43,6 +44,7 @@ data class SessionUndo(
     val target: StorageRef,
     val targetParent: StorageRef,
     val targetName: String,
+    val targetFingerprint: FileFingerprint,
     val displacedTarget: StorageRef? = null,
     val trashedTarget: StorageRef? = null,
 )
@@ -159,6 +161,9 @@ class SafeMove(
                     target = finalTarget,
                     targetParent = request.targetParent,
                     targetName = request.targetName,
+                    targetFingerprint = storage.metadata(finalTarget)?.let {
+                        FileFingerprint(it.sizeBytes, it.modifiedAtEpochMs)
+                    } ?: throw IllegalStateException("could not read finalized target metadata"),
                     displacedTarget = entry.existingTarget,
                     trashedTarget = entry.trashedTarget,
                 ),
@@ -247,6 +252,11 @@ class SafeMove(
      */
     suspend fun undo(move: SessionUndo): UndoResult {
         if (!storage.exists(move.target)) return UndoResult.NeedsUserIntervention("the moved file is missing")
+        val targetMetadata = storage.metadata(move.target)
+            ?: return UndoResult.NeedsUserIntervention("the moved file metadata is unavailable")
+        if (FileFingerprint(targetMetadata.sizeBytes, targetMetadata.modifiedAtEpochMs) != move.targetFingerprint) {
+            return UndoResult.NeedsUserIntervention("the moved file changed outside Drawer")
+        }
         if (storage.findChild(move.sourceParent, move.sourceName) != null) {
             return UndoResult.NeedsUserIntervention("the original source name is already occupied")
         }

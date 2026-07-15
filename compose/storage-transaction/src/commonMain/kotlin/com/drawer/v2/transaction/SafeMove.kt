@@ -181,6 +181,29 @@ class SafeMove(
         }
     }
 
+    /**
+     * User-selected rollback after the final copy exists but the source could
+     * not be deleted. The source is never touched; the final copy is removed
+     * only while both files still exist. An overwritten target is restored from
+     * Drawer Trash as part of the same recovery record.
+     */
+    suspend fun rollbackPendingSourceDelete(): RecoveryResult {
+        val entry = journal.active() ?: return RecoveryResult.NoPendingOperation
+        if (entry.stage != OperationStage.SOURCE_DELETE_PENDING) return intervention(entry)
+        val finalTarget = entry.finalTarget ?: return intervention(entry)
+        if (!storage.exists(entry.source) || !storage.exists(finalTarget)) return intervention(entry)
+        val sourceSize = storage.metadata(entry.source)?.sizeBytes ?: return intervention(entry)
+        val targetSize = storage.metadata(finalTarget)?.sizeBytes ?: return intervention(entry)
+        if (sourceSize != targetSize) return intervention(entry)
+        if (!deleteWithRetries(finalTarget)) return intervention(entry)
+        return if (entry.existingTarget == null) {
+            journal.clear()
+            RecoveryResult.RolledBackTemporary
+        } else {
+            restoreExistingTarget(entry)
+        }
+    }
+
     private suspend fun rollbackFinalizedTrash(entry: OperationJournalEntry): RecoveryResult {
         val existing = entry.existingTarget ?: return intervention(entry)
         val trashed = entry.trashedTarget ?: return intervention(entry)

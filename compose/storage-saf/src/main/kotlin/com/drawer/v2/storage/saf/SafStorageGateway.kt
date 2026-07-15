@@ -29,6 +29,16 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
         return ref(treeUri, DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId))
     }
 
+    /** True when [candidate] is [ancestor] or sits beneath it in the local/SD tree. */
+    fun isSameOrDescendant(candidate: StorageRef, ancestor: StorageRef): Boolean {
+        val candidateUri = token(candidate).documentUri
+        val ancestorUri = token(ancestor).documentUri
+        if (candidateUri.authority != ancestorUri.authority) return false
+        val candidateId = DocumentsContract.getDocumentId(candidateUri)
+        val ancestorId = DocumentsContract.getDocumentId(ancestorUri)
+        return candidateId == ancestorId || candidateId.startsWith("$ancestorId/")
+    }
+
     override suspend fun listChildren(directory: StorageRef): List<StorageEntry> {
         val parent = token(directory)
         val parentId = DocumentsContract.getDocumentId(parent.documentUri)

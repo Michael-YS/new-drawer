@@ -75,6 +75,24 @@ class SafeMoveTest {
     }
 
     @Test
+    fun `rollback after source delete failure preserves source and removes final copy`() = runTest {
+        val source = file("source/photo.jpg")
+        val target = directory("target")
+        val storage = FakeStorage(mapOf(source to 42L), deleteSucceeds = false)
+        val journal = FakeJournal()
+        val move = SafeMove(storage, journal)
+
+        val result = move.execute(request(source = source, target = target))
+        val failed = assertIs<SafeMoveResult.SourceDeleteFailed>(result)
+        storage.deleteSucceeds = true
+
+        assertEquals(RecoveryResult.RolledBackTemporary, move.rollbackPendingSourceDelete())
+        assertTrue(storage.exists(source))
+        assertTrue(!storage.exists(failed.target))
+        assertNull(journal.entry)
+    }
+
+    @Test
     fun `overwrite keeps old target in trash before moving source`() = runTest {
         val source = file("source/new.jpg")
         val targetDirectory = directory("target")
@@ -154,7 +172,7 @@ private class FakeJournal : OperationJournalStore {
 
 private class FakeStorage(
     initialFiles: Map<StorageRef, Long>,
-    private val deleteSucceeds: Boolean = true,
+    var deleteSucceeds: Boolean = true,
 ) : StorageGateway {
     private val files = initialFiles.toMutableMap()
     private var sequence = 0

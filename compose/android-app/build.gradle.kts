@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseVersion = providers.gradleProperty("releaseVersion").orElse("0.1.0").get()
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1").get().toInt()
+val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+
 android {
     namespace = "com.github.Michael_YS.Drawer.v2"
     compileSdk = 35
@@ -12,12 +16,29 @@ android {
         applicationId = "com.github.Michael_YS.Drawer.v2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersion
     }
 
     buildFeatures {
         compose = true
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     compileOptions {
@@ -28,5 +49,12 @@ android {
 
 dependencies {
     implementation(project(":compose-ui"))
+    implementation(project(":persistence"))
+    implementation(project(":scanner"))
+    implementation(project(":storage-contract"))
+    implementation(project(":storage-saf"))
+    implementation(project(":storage-transaction"))
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.material3:material3:1.3.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

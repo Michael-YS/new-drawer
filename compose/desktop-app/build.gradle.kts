@@ -4,6 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseVersion = providers.gradleProperty("releaseVersion").orElse("0.1.0").get()
+
 kotlin {
     jvmToolchain(21)
 }
@@ -26,7 +28,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
             packageName = "Drawer-v2"
-            packageVersion = "0.1.0"
+            packageVersion = releaseVersion
         }
     }
 }

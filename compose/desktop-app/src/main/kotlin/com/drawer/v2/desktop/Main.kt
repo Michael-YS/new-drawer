@@ -102,10 +102,12 @@ private fun DesktopDrawerApp() {
     var photos by remember { mutableStateOf(emptyList<PhotoCandidate>()) }
     var categories by remember { mutableStateOf(emptyList<String>()) }
     var status by remember { mutableStateOf("Choose at least one source and one target directory.") }
+    var recoveryChecked by remember { mutableStateOf(false) }
     var scanJob by remember { mutableStateOf<Job?>(null) }
     var conflict by remember { mutableStateOf<Conflict?>(null) }
     var confirmOverwrite by remember { mutableStateOf<Conflict?>(null) }
     var renameConflict by remember { mutableStateOf<Conflict?>(null) }
+    var pendingSourceDelete by remember { mutableStateOf<PhotoCandidate?>(null) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -200,11 +202,15 @@ private fun DesktopDrawerApp() {
                         overwrite = overwritePlan,
                     ),
                 )
-                photos = photos - candidate
                 status = when (result) {
-                    is com.drawer.v2.transaction.SafeMoveResult.Completed -> "Moved to $category."
-                    is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed ->
-                        "Copy completed, but the source remains. Restart recovery will retry deletion."
+                    is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
+                        photos = photos - candidate
+                        "Moved to $category."
+                    }
+                    is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed -> {
+                        pendingSourceDelete = candidate
+                        "Copy completed, but the source remains. Choose how to resolve it."
+                    }
                 }
             } catch (error: Throwable) {
                 status = "Move failed: ${error.message ?: error::class.simpleName}"
@@ -212,7 +218,18 @@ private fun DesktopDrawerApp() {
         }
     }
 
-    LaunchedEffect(sources, target) { scan() }
+    LaunchedEffect(Unit) {
+        val recovery = SafeMove(storage, journal).recover()
+        status = when (recovery) {
+            is com.drawer.v2.transaction.RecoveryResult.NoPendingOperation -> status
+            is com.drawer.v2.transaction.RecoveryResult.Completed -> "Recovered the previous move."
+            is com.drawer.v2.transaction.RecoveryResult.RolledBackTemporary -> "Recovered an incomplete move."
+            is com.drawer.v2.transaction.RecoveryResult.NeedsUserIntervention ->
+                "A previous file operation needs manual attention before continuing."
+        }
+        recoveryChecked = recovery !is com.drawer.v2.transaction.RecoveryResult.NeedsUserIntervention
+    }
+    LaunchedEffect(sources, target, recoveryChecked) { if (recoveryChecked) scan() }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -269,6 +286,7 @@ private fun DesktopDrawerApp() {
                                 }
                             }
                         },
+                        movesEnabled = pendingSourceDelete == null,
                         onCategory = { photos.firstOrNull()?.let { candidate -> move(candidate, it) } },
                         onSkip = { photos.firstOrNull()?.let(::skip) },
                         modifier = Modifier.weight(1f),
@@ -321,6 +339,58 @@ private fun DesktopDrawerApp() {
             dismissButton = { OutlinedButton(onClick = { confirmOverwrite = null }) { Text("Cancel") } },
         )
     }
+    pendingSourceDelete?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("The source photo could not be deleted") },
+            text = { Text("The copied target is present and the original remains. Resolve this before another move.") },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        when (SafeMove(storage, journal).recover()) {
+                            is com.drawer.v2.transaction.RecoveryResult.Completed -> {
+                                photos = photos - candidate
+                                pendingSourceDelete = null
+                                status = "Source deletion recovered."
+                            }
+                            else -> status = "Retry could not delete the source."
+                        }
+                    }
+                }) { Text("Retry deletion") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            when (SafeMove(storage, journal).rollbackPendingSourceDelete()) {
+                                is com.drawer.v2.transaction.RecoveryResult.RolledBackTemporary -> {
+                                    pendingSourceDelete = null
+                                    status = "Move rolled back; the original remains in place."
+                                }
+                                else -> status = "Rollback needs manual attention."
+                            }
+                        }
+                    }) { Text("Safely roll back") }
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            suppressions.suppress(
+                                SuppressedItem(
+                                    candidate.sourceRootId,
+                                    candidate.file,
+                                    FileFingerprint(candidate.metadata.sizeBytes, candidate.metadata.modifiedAtEpochMs),
+                                    SuppressionReason.KEPT_COPY,
+                                ),
+                            )
+                            journal.clear()
+                            photos = photos - candidate
+                            pendingSourceDelete = null
+                            status = "Kept both copies; the source is marked as handled."
+                        }
+                    }) { Text("Keep both") }
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -367,6 +437,7 @@ private fun CategoryPanel(
     newCategory: String,
     onNewCategoryChanged: (String) -> Unit,
     onCreate: () -> Unit,
+    movesEnabled: Boolean,
     onCategory: (String) -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
@@ -375,7 +446,9 @@ private fun CategoryPanel(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Categories", style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                categories.forEach { category -> Button(onClick = { onCategory(category) }) { Text(category) } }
+                categories.forEach { category ->
+                    Button(enabled = movesEnabled, onClick = { onCategory(category) }) { Text(category) }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -389,7 +462,7 @@ private fun CategoryPanel(
                 Button(onClick = onCreate) { Text("Create") }
             }
             Spacer(Modifier.weight(1f))
-            OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Skip for now") }
+            OutlinedButton(enabled = movesEnabled, onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Skip for now") }
         }
     }
 }

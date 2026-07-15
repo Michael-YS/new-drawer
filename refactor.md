@@ -190,8 +190,9 @@ v1 不包含应用内分类重命名、删除或回收站恢复；这些进入 v
 
 1. Windows NIO 集成测试与 Android SAF 仪器测试。
 2. Android 真机/模拟器测试：持久 URI 授权、权限撤销、SD 卡不可用、跨卷复制。
-3. CI 执行共享单测、Android debug 构建、Windows x64 打包构建。
-4. 以新客户端的纵切验收取代 Flutter smoke test；通过后才删除或彻底归档旧交付路径。
+3. GitHub Actions 的普通 `push` 与 `pull_request` 必须执行共享单测、Windows NIO 契约测试、Windows 客户端编译和 Android debug 编译；CI 不再把旧 Flutter 或旧 `kotlin-core` 的绿色结果视作新客户端验收。
+4. 推送版本标签（`v*`）时，在上述验证通过后构建 Windows x64 MSI 与 Android release APK/AAB，并将产物附到对应 GitHub Release。Android 发布签名使用 GitHub Secrets 注入；缺少签名材料时发布工作流必须显式失败，不能悄悄上传 debug 包冒充发布版。Windows 代码签名列为发布前置条件，证书未配置时产物标为未签名。
+5. 以新客户端的纵切验收取代 Flutter smoke test；通过后才删除或彻底归档旧交付路径。
 
 ## 9. 必测故障矩阵
 

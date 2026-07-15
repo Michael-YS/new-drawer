@@ -97,6 +97,11 @@ private data class Conflict(
     val existing: StorageEntry,
 )
 
+private data class SessionUndoEntry(
+    val undo: SessionUndo,
+    val candidate: PhotoCandidate,
+)
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun DesktopDrawerApp() {
@@ -123,7 +128,7 @@ private fun DesktopDrawerApp() {
     var settingsOpen by remember { mutableStateOf(false) }
     var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
     var trashSummary by remember { mutableStateOf(TrashSummary()) }
-    var undoStack by remember { mutableStateOf(emptyList<SessionUndo>()) }
+    var undoStack by remember { mutableStateOf(emptyList<SessionUndoEntry>()) }
     var pendingDirectoryChange by remember { mutableStateOf<(() -> Unit)?>(null) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
@@ -168,8 +173,14 @@ private fun DesktopDrawerApp() {
                 suppressionStore = suppressions,
             ).flowOn(Dispatchers.IO).collect { event ->
                 when (event) {
-                    is ScanEvent.PhotoDiscovered -> photos = (photos + event.photo)
-                        .sortedByDescending { it.metadata.modifiedAtEpochMs }
+                    is ScanEvent.PhotoDiscovered -> {
+                        photos = if (photos.isEmpty()) {
+                            listOf(event.photo)
+                        } else {
+                            listOf(photos.first()) + (photos.drop(1) + event.photo)
+                                .sortedByDescending { it.metadata.modifiedAtEpochMs }
+                        }
+                    }
                     is ScanEvent.Problem -> status = "Scan issue: ${event.detail}"
                     ScanEvent.Completed -> status = if (photos.isEmpty()) "Scan complete. No pending photos." else "Scan complete."
                     is ScanEvent.DirectoryScanned -> Unit
@@ -232,7 +243,7 @@ private fun DesktopDrawerApp() {
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
                         photos = photos - candidate
-                        undoStack = undoStack + result.undo
+                        undoStack = undoStack + SessionUndoEntry(result.undo, candidate)
                         "Moved to $category."
                     }
                     is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed -> {
@@ -250,11 +261,11 @@ private fun DesktopDrawerApp() {
         val latest = undoStack.lastOrNull() ?: return
         scope.launch {
             status = "Undoing the last move..."
-            when (val result = withContext(Dispatchers.IO) { SafeMove(storage, journal).undo(latest) }) {
-                UndoResult.Completed -> {
-                    undoStack = undoStack.dropLast(1)
-                    status = "Last move undone."
-                    scan()
+        when (val result = withContext(Dispatchers.IO) { SafeMove(storage, journal).undo(latest.undo) }) {
+            UndoResult.Completed -> {
+                undoStack = undoStack.dropLast(1)
+                photos = listOf(latest.candidate) + photos
+                status = "Last move undone."
                 }
                 is UndoResult.NeedsUserIntervention -> status = "Undo needs manual attention: ${result.detail}"
             }

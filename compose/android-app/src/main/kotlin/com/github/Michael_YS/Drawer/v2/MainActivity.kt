@@ -60,7 +60,11 @@ import com.drawer.v2.scanner.ScanEvent
 import com.drawer.v2.scanner.scanImages
 import com.drawer.v2.storage.StorageEntry
 import com.drawer.v2.storage.StorageEntryKind
+import com.drawer.v2.storage.StorageGateway
+import com.drawer.v2.storage.TrashSummary
+import com.drawer.v2.storage.clearDirectoryContents
 import com.drawer.v2.storage.saf.SafStorageGateway
+import com.drawer.v2.storage.summarizeDirectory
 import com.drawer.v2.transaction.ExistingTargetToTrash
 import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
@@ -109,6 +113,8 @@ private fun AndroidDrawerApp() {
     var renameConflict by remember { mutableStateOf<AndroidConflict?>(null) }
     var pendingSourceDelete by remember { mutableStateOf<PhotoCandidate?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
+    var trashSummary by remember { mutableStateOf(TrashSummary()) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -300,7 +306,10 @@ private fun AndroidDrawerApp() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { sourcePicker.launch(null) }) { Text("Add source") }
                     OutlinedButton(onClick = { targetPicker.launch(null) }) { Text("Choose target") }
-                    OutlinedButton(onClick = { settingsOpen = true }) { Text("Settings") }
+                    OutlinedButton(onClick = {
+                        settingsOpen = true
+                        scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, target) } }
+                    }) { Text("Settings") }
                 }
                 Text("Target: ${target?.displayName ?: "not selected"}")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -468,9 +477,44 @@ private fun AndroidDrawerApp() {
                             scan()
                         }
                     }) { Text("Recheck kept copies") }
+                    Text("Drawer Trash: ${trashSummary.fileCount} files, ${formatBytes(trashSummary.totalBytes)}")
+                    OutlinedButton(
+                        enabled = trashSummary.fileCount > 0,
+                        onClick = { clearTrashConfirmationOpen = true },
+                    ) { Text("Empty Drawer Trash") }
                 }
             },
             confirmButton = { Button(onClick = { settingsOpen = false }) { Text("Done") } },
+        )
+    }
+    if (clearTrashConfirmationOpen) {
+        var acknowledged by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { clearTrashConfirmationOpen = false },
+            title = { Text("Permanently empty Drawer Trash?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This permanently deletes ${trashSummary.fileCount} files (${formatBytes(trashSummary.totalBytes)}). It cannot be undone.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
+                        Text("I understand these files will be permanently deleted.")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(enabled = acknowledged, onClick = {
+                    scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) { emptyTrash(storage, target) }
+                        }.onSuccess { deleted ->
+                            trashSummary = TrashSummary()
+                            status = "Permanently deleted ${deleted.fileCount} files from Drawer Trash."
+                            clearTrashConfirmationOpen = false
+                        }.onFailure { status = "Could not empty Drawer Trash: ${it.message}" }
+                    }
+                }) { Text("Permanently delete") }
+            },
+            dismissButton = { OutlinedButton(onClick = { clearTrashConfirmationOpen = false }) { Text("Cancel") } },
         )
     }
 }
@@ -530,6 +574,25 @@ private fun suggestedName(original: String): String {
     val stem = if (dot > 0) original.substring(0, dot) else original
     val extension = if (dot > 0) original.substring(dot) else ""
     return "$stem (1)$extension"
+}
+
+private suspend fun readTrashSummary(storage: StorageGateway, target: TargetRoot?): TrashSummary {
+    val root = target ?: return TrashSummary()
+    val trash = storage.findChild(root.directory, TRASH_DIRECTORY) ?: return TrashSummary()
+    return if (trash.kind == StorageEntryKind.DIRECTORY) summarizeDirectory(storage, trash.ref) else TrashSummary()
+}
+
+private suspend fun emptyTrash(storage: StorageGateway, target: TargetRoot?): TrashSummary {
+    val root = target ?: return TrashSummary()
+    val trash = storage.findChild(root.directory, TRASH_DIRECTORY) ?: return TrashSummary()
+    return if (trash.kind == StorageEntryKind.DIRECTORY) clearDirectoryContents(storage, trash.ref) else TrashSummary()
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1_024 -> "$bytes B"
+    bytes < 1_024 * 1_024 -> "%.1f KiB".format(bytes / 1_024.0)
+    bytes < 1_024 * 1_024 * 1_024 -> "%.1f MiB".format(bytes / (1_024.0 * 1_024.0))
+    else -> "%.1f GiB".format(bytes / (1_024.0 * 1_024.0 * 1_024.0))
 }
 
 private const val TRASH_DIRECTORY = "Drawer Trash"

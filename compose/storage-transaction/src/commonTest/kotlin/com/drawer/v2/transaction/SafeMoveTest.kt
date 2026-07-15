@@ -50,6 +50,29 @@ class SafeMoveTest {
         assertEquals(com.drawer.v2.domain.OperationStage.SOURCE_DELETE_PENDING, journal.entry?.stage)
     }
 
+    @Test
+    fun `recovery retries a source delete only after final target exists`() = runTest {
+        val source = file("source/photo.jpg")
+        val target = file("target/photo.jpg")
+        val journal = FakeJournal().apply {
+            entry = OperationJournalEntry(
+                operationId = "op-1",
+                stage = com.drawer.v2.domain.OperationStage.SOURCE_DELETE_PENDING,
+                source = source,
+                sourceParent = directory("source"),
+                sourceName = "photo.jpg",
+                targetParent = directory("target"),
+                targetName = "photo.jpg",
+                finalTarget = target,
+            )
+        }
+        val storage = FakeStorage(mapOf(source to 42L, target to 42L))
+
+        assertEquals(RecoveryResult.Completed, SafeMove(storage, journal).recover())
+        assertTrue(!storage.exists(source))
+        assertNull(journal.entry)
+    }
+
     private fun request(source: StorageRef, target: StorageRef) = SafeMoveRequest(
         operationId = "op-1",
         source = source,

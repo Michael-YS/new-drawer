@@ -62,6 +62,7 @@ data class SuppressedItem(
 
 enum class OperationStage {
     PREPARED,
+    TEMP_CREATED,
     EXISTING_TARGET_TRASHED,
     TEMP_COPIED,
     FINALIZED,

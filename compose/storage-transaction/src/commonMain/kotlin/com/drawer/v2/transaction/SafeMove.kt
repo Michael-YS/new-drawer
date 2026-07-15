@@ -20,6 +20,13 @@ sealed interface SafeMoveResult {
     data class SourceDeleteFailed(val target: StorageRef) : SafeMoveResult
 }
 
+sealed interface RecoveryResult {
+    data object NoPendingOperation : RecoveryResult
+    data object RolledBackTemporary : RecoveryResult
+    data object Completed : RecoveryResult
+    data class NeedsUserIntervention(val entry: OperationJournalEntry) : RecoveryResult
+}
+
 /**
  * The non-overwrite half of the v2 file transaction.
  *
@@ -46,9 +53,18 @@ class SafeMove(
         journal.replace(entry)
 
         val temporary = storage.createTemporaryFile(request.targetParent, ".drawer-move-")
-        val verification = storage.copy(request.source, temporary)
-        check(verification.isValid) { "copied byte count did not match source" }
-        entry = entry.copy(stage = OperationStage.TEMP_COPIED, temp = temporary)
+        entry = entry.copy(stage = OperationStage.TEMP_CREATED, temp = temporary)
+        journal.replace(entry)
+
+        try {
+            val verification = storage.copy(request.source, temporary)
+            check(verification.isValid) { "copied byte count did not match source" }
+        } catch (error: Throwable) {
+            if (storage.exists(request.source)) runCatching { storage.delete(temporary) }
+            journal.clear()
+            throw error
+        }
+        entry = entry.copy(stage = OperationStage.TEMP_COPIED)
         journal.replace(entry)
 
         val finalTarget = storage.finalizeTemporary(
@@ -62,12 +78,50 @@ class SafeMove(
         )
         journal.replace(entry)
 
-        if (!storage.delete(request.source)) {
+        if (!runCatching { storage.delete(request.source) }.getOrDefault(false)) {
             journal.replace(entry.copy(stage = OperationStage.SOURCE_DELETE_PENDING))
             return SafeMoveResult.SourceDeleteFailed(finalTarget)
         }
 
         journal.clear()
         return SafeMoveResult.Completed(finalTarget)
+    }
+
+    /**
+     * Reconciles the one durable operation left by a process death. Recovery
+     * never deletes a source unless the final destination is present.
+     */
+    suspend fun recover(): RecoveryResult {
+        val entry = journal.active() ?: return RecoveryResult.NoPendingOperation
+        return when (entry.stage) {
+            OperationStage.PREPARED,
+            OperationStage.TEMP_CREATED,
+            OperationStage.TEMP_COPIED,
+            OperationStage.EXISTING_TARGET_TRASHED -> {
+                entry.temp?.let { runCatching { storage.delete(it) } }
+                journal.clear()
+                RecoveryResult.RolledBackTemporary
+            }
+
+            OperationStage.FINALIZED,
+            OperationStage.SOURCE_DELETE_PENDING -> {
+                val finalTarget = entry.finalTarget
+                    ?: return RecoveryResult.NeedsUserIntervention(entry)
+                val sourceExists = storage.exists(entry.source)
+                val targetExists = storage.exists(finalTarget)
+                when {
+                    targetExists && !sourceExists -> {
+                        journal.clear()
+                        RecoveryResult.Completed
+                    }
+                    targetExists && sourceExists && runCatching { storage.delete(entry.source) }.getOrDefault(false) -> {
+                        journal.clear()
+                        RecoveryResult.Completed
+                    }
+                    targetExists && sourceExists -> RecoveryResult.NeedsUserIntervention(entry)
+                    else -> RecoveryResult.NeedsUserIntervention(entry)
+                }
+            }
+        }
     }
 }

@@ -292,10 +292,29 @@ private fun DesktopDrawerApp() {
                         chooseDirectories().map { path ->
                             SourceRoot(UUID.randomUUID().toString(), storage.directory(path), path.fileName.toString(), true)
                         }.filter { newRoot -> sources.none { it.directory == newRoot.directory } }
-                            .let { added ->
-                                if (added.isNotEmpty()) requestDirectoryChange {
-                                    added.forEach(configuration::saveSourceRoot)
-                                    sources = sources + added
+                            .let { selected ->
+                                val targetPath = target?.directory?.token?.let { Path.of(it).toAbsolutePath().normalize() }
+                                val valid = selected.filter { root ->
+                                    targetPath == null || !Path.of(root.directory.token).toAbsolutePath().normalize().startsWith(targetPath)
+                                }
+                                if (valid.size != selected.size) {
+                                    status = "A source directory inside the target directory was ignored."
+                                }
+                                val effective = valid.filter { root ->
+                                    val rootPath = Path.of(root.directory.token).toAbsolutePath().normalize()
+                                    sources.none { existing -> rootPath.startsWith(Path.of(existing.directory.token).toAbsolutePath().normalize()) } &&
+                                        valid.none { other ->
+                                            other != root && rootPath.startsWith(Path.of(other.directory.token).toAbsolutePath().normalize())
+                                        }
+                                }
+                                val replacedNestedSources = sources.filter { existing ->
+                                    val existingPath = Path.of(existing.directory.token).toAbsolutePath().normalize()
+                                    effective.any { root -> existingPath.startsWith(Path.of(root.directory.token).toAbsolutePath().normalize()) }
+                                }
+                                if (effective.isNotEmpty()) requestDirectoryChange {
+                                    replacedNestedSources.forEach { configuration.removeSourceRoot(it.id) }
+                                    effective.forEach(configuration::saveSourceRoot)
+                                    sources = (sources - replacedNestedSources) + effective
                                 }
                             }
                     },
@@ -308,9 +327,14 @@ private fun DesktopDrawerApp() {
                     onChooseTarget = {
                         chooseDirectory()?.let { path ->
                             val chosen = TargetRoot(storage.directory(path), path.fileName.toString())
-                            requestDirectoryChange {
-                                target = chosen
-                                configuration.saveTargetRoot(chosen)
+                            val chosenPath = Path.of(chosen.directory.token).toAbsolutePath().normalize()
+                            if (sources.any { Path.of(it.directory.token).toAbsolutePath().normalize().startsWith(chosenPath) }) {
+                                status = "The target cannot contain an existing source directory."
+                            } else {
+                                requestDirectoryChange {
+                                    target = chosen
+                                    configuration.saveTargetRoot(chosen)
+                                }
                             }
                         }
                     },

@@ -48,6 +48,11 @@ CREATE TABLE operation_journal (
   target_parent_backend TEXT NOT NULL,
   target_parent_token TEXT NOT NULL,
   target_name TEXT NOT NULL,
+  existing_target_backend TEXT,
+  existing_target_token TEXT,
+  trash_parent_backend TEXT,
+  trash_parent_token TEXT,
+  trash_name TEXT,
   temp_backend TEXT,
   temp_token TEXT,
   final_backend TEXT,
@@ -115,8 +120,10 @@ INSERT OR REPLACE INTO operation_journal(
   source_backend, source_token,
   source_parent_backend, source_parent_token, source_name,
   target_parent_backend, target_parent_token, target_name,
+  existing_target_backend, existing_target_token,
+  trash_parent_backend, trash_parent_token, trash_name,
   temp_backend, temp_token, final_backend, final_token, trash_backend, trash_token
-) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 clearJournal:
 DELETE FROM operation_journal WHERE singleton = 1;

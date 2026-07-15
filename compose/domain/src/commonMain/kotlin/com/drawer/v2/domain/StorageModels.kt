@@ -62,6 +62,9 @@ data class SuppressedItem(
 
 enum class OperationStage {
     PREPARED,
+    TRASH_TEMP_CREATED,
+    TRASH_TEMP_COPIED,
+    TRASH_FINALIZED,
     TEMP_CREATED,
     EXISTING_TARGET_TRASHED,
     TEMP_COPIED,
@@ -78,6 +81,10 @@ data class OperationJournalEntry(
     val sourceName: String,
     val targetParent: StorageRef,
     val targetName: String,
+    /** The destination file displaced by an overwrite, if any. */
+    val existingTarget: StorageRef? = null,
+    val trashParent: StorageRef? = null,
+    val trashName: String? = null,
     val temp: StorageRef? = null,
     val finalTarget: StorageRef? = null,
     val trashedTarget: StorageRef? = null,

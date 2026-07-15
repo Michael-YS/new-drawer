@@ -3,6 +3,7 @@ package com.drawer.v2.transaction
 import com.drawer.v2.domain.MediaMetadata
 import com.drawer.v2.domain.OperationJournalEntry
 import com.drawer.v2.domain.OperationJournalStore
+import com.drawer.v2.domain.OperationStage
 import com.drawer.v2.domain.StorageBackend
 import com.drawer.v2.domain.StorageRef
 import com.drawer.v2.storage.CopyVerification
@@ -70,6 +71,59 @@ class SafeMoveTest {
 
         assertEquals(RecoveryResult.Completed, SafeMove(storage, journal).recover())
         assertTrue(!storage.exists(source))
+        assertNull(journal.entry)
+    }
+
+    @Test
+    fun `overwrite keeps old target in trash before moving source`() = runTest {
+        val source = file("source/new.jpg")
+        val targetDirectory = directory("target")
+        val existing = file("target/photo.jpg")
+        val trashDirectory = directory("target/Drawer Trash")
+        val storage = FakeStorage(mapOf(source to 42L, existing to 99L))
+        val journal = FakeJournal()
+
+        val result = SafeMove(storage, journal).execute(
+            request(source = source, target = targetDirectory).copy(
+                overwrite = ExistingTargetToTrash(existing, trashDirectory, "photo.jpg"),
+            ),
+        )
+
+        val completed = assertIs<SafeMoveResult.Completed>(result)
+        assertEquals(42L, storage.sizeOf(completed.target))
+        assertEquals(99L, storage.sizeOf(file("target/Drawer Trash/photo.jpg")))
+        assertTrue(!storage.exists(source))
+        assertNull(journal.entry)
+    }
+
+    @Test
+    fun `recovery restores old target when overwrite stopped before finalizing source`() = runTest {
+        val source = file("source/new.jpg")
+        val existing = file("target/photo.jpg")
+        val trash = file("target/Drawer Trash/photo.jpg")
+        val temporary = file("target/.drawer-move-1")
+        val journal = FakeJournal().apply {
+            entry = OperationJournalEntry(
+                operationId = "op-1",
+                stage = OperationStage.TEMP_COPIED,
+                source = source,
+                sourceParent = directory("source"),
+                sourceName = "new.jpg",
+                targetParent = directory("target"),
+                targetName = "photo.jpg",
+                existingTarget = existing,
+                trashParent = directory("target/Drawer Trash"),
+                trashName = "photo.jpg",
+                temp = temporary,
+                trashedTarget = trash,
+            )
+        }
+        val storage = FakeStorage(mapOf(source to 42L, temporary to 42L, trash to 99L))
+
+        assertEquals(RecoveryResult.RolledBackTemporary, SafeMove(storage, journal).recover())
+        assertEquals(99L, storage.sizeOf(existing))
+        assertTrue(!storage.exists(trash))
+        assertTrue(storage.exists(source))
         assertNull(journal.entry)
     }
 

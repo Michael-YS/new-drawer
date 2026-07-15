@@ -19,7 +19,9 @@ class SqlDelightOperationJournalStore(
 
     override suspend fun active(): OperationJournalEntry? = queries.selectJournal(
         mapper = { _, operationId, stage, sourceBackend, sourceToken, sourceParentBackend, sourceParentToken,
-            sourceName, targetParentBackend, targetParentToken, targetName, tempBackend, tempToken,
+            sourceName, targetParentBackend, targetParentToken, targetName,
+            existingTargetBackend, existingTargetToken, trashParentBackend, trashParentToken, trashName,
+            tempBackend, tempToken,
             finalBackend, finalToken, trashBackend, trashToken ->
             OperationJournalEntry(
                 operationId = operationId,
@@ -29,6 +31,9 @@ class SqlDelightOperationJournalStore(
                 sourceName = sourceName,
                 targetParent = ref(targetParentBackend, targetParentToken),
                 targetName = targetName,
+                existingTarget = refOrNull(existingTargetBackend, existingTargetToken),
+                trashParent = refOrNull(trashParentBackend, trashParentToken),
+                trashName = trashName,
                 temp = refOrNull(tempBackend, tempToken),
                 finalTarget = refOrNull(finalBackend, finalToken),
                 trashedTarget = refOrNull(trashBackend, trashToken),
@@ -48,6 +53,11 @@ class SqlDelightOperationJournalStore(
             target_parent_backend = entry.targetParent.backend.name,
             target_parent_token = entry.targetParent.token,
             target_name = entry.targetName,
+            existing_target_backend = entry.existingTarget?.backend?.name,
+            existing_target_token = entry.existingTarget?.token,
+            trash_parent_backend = entry.trashParent?.backend?.name,
+            trash_parent_token = entry.trashParent?.token,
+            trash_name = entry.trashName,
             temp_backend = entry.temp?.backend?.name,
             temp_token = entry.temp?.token,
             final_backend = entry.finalTarget?.backend?.name,

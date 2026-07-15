@@ -13,6 +13,14 @@ data class SafeMoveRequest(
     val sourceName: String,
     val targetParent: StorageRef,
     val targetName: String,
+    val overwrite: ExistingTargetToTrash? = null,
+)
+
+/** A conflict resolution selected by the user: retain the old file in trash. */
+data class ExistingTargetToTrash(
+    val existingTarget: StorageRef,
+    val trashParent: StorageRef,
+    val trashName: String,
 )
 
 sealed interface SafeMoveResult {
@@ -28,11 +36,9 @@ sealed interface RecoveryResult {
 }
 
 /**
- * The non-overwrite half of the v2 file transaction.
- *
  * A source is deleted only after a verified temp copy has become the final
- * target. A caller handles target collisions by moving the existing target to
- * `Drawer Trash` before invoking this class.
+ * target. For an overwrite, the old target is first copied to `Drawer Trash`;
+ * every state up to the final source move can restore that old target.
  */
 class SafeMove(
     private val storage: StorageGateway,
@@ -49,42 +55,86 @@ class SafeMove(
             sourceName = request.sourceName,
             targetParent = request.targetParent,
             targetName = request.targetName,
+            existingTarget = request.overwrite?.existingTarget,
+            trashParent = request.overwrite?.trashParent,
+            trashName = request.overwrite?.trashName,
         )
         journal.replace(entry)
 
-        val temporary = storage.createTemporaryFile(request.targetParent, ".drawer-move-")
-        entry = entry.copy(stage = OperationStage.TEMP_CREATED, temp = temporary)
-        journal.replace(entry)
+        request.overwrite?.let { overwrite ->
+            require(storage.exists(overwrite.existingTarget)) { "overwrite target no longer exists" }
+            val trashTemporary = storage.createTemporaryFile(overwrite.trashParent, ".drawer-trash-")
+            entry = entry.copy(stage = OperationStage.TRASH_TEMP_CREATED, temp = trashTemporary)
+            journal.replace(entry)
+
+            try {
+                val verification = storage.copy(overwrite.existingTarget, trashTemporary)
+                check(verification.isValid) { "trash copy byte count did not match existing target" }
+            } catch (error: Throwable) {
+                runCatching { storage.delete(trashTemporary) }
+                journal.clear()
+                throw error
+            }
+            entry = entry.copy(stage = OperationStage.TRASH_TEMP_COPIED)
+            journal.replace(entry)
+
+            val trashedTarget = storage.finalizeTemporary(
+                temporary = trashTemporary,
+                destinationParent = overwrite.trashParent,
+                destinationName = overwrite.trashName,
+            )
+            entry = entry.copy(
+                stage = OperationStage.TRASH_FINALIZED,
+                temp = null,
+                trashedTarget = trashedTarget,
+            )
+            journal.replace(entry)
+
+            if (!deleteWithRetries(overwrite.existingTarget)) {
+                runCatching { storage.delete(trashedTarget) }
+                journal.clear()
+                throw IllegalStateException("could not move existing target to Drawer Trash")
+            }
+            entry = entry.copy(stage = OperationStage.EXISTING_TARGET_TRASHED)
+            journal.replace(entry)
+        }
 
         try {
+            val temporary = storage.createTemporaryFile(request.targetParent, ".drawer-move-")
+            entry = entry.copy(stage = OperationStage.TEMP_CREATED, temp = temporary)
+            journal.replace(entry)
+
             val verification = storage.copy(request.source, temporary)
             check(verification.isValid) { "copied byte count did not match source" }
-        } catch (error: Throwable) {
-            if (storage.exists(request.source)) runCatching { storage.delete(temporary) }
+            entry = entry.copy(stage = OperationStage.TEMP_COPIED)
+            journal.replace(entry)
+
+            val finalTarget = storage.finalizeTemporary(
+                temporary = temporary,
+                destinationParent = request.targetParent,
+                destinationName = request.targetName,
+            )
+            entry = entry.copy(
+                stage = OperationStage.FINALIZED,
+                temp = null,
+                finalTarget = finalTarget,
+            )
+            journal.replace(entry)
+
+            if (!deleteWithRetries(request.source)) {
+                journal.replace(entry.copy(stage = OperationStage.SOURCE_DELETE_PENDING))
+                return SafeMoveResult.SourceDeleteFailed(finalTarget)
+            }
+
             journal.clear()
+            return SafeMoveResult.Completed(finalTarget)
+        } catch (error: Throwable) {
+            // The source has not been deleted in this block. If an overwrite
+            // was already staged, restore its old target before surfacing the
+            // failure; the durable journal remains only when restoration fails.
+            rollbackBeforeSourceMove(entry)
             throw error
         }
-        entry = entry.copy(stage = OperationStage.TEMP_COPIED)
-        journal.replace(entry)
-
-        val finalTarget = storage.finalizeTemporary(
-            temporary = temporary,
-            destinationParent = request.targetParent,
-            destinationName = request.targetName,
-        )
-        entry = entry.copy(
-            stage = OperationStage.FINALIZED,
-            finalTarget = finalTarget,
-        )
-        journal.replace(entry)
-
-        if (!runCatching { storage.delete(request.source) }.getOrDefault(false)) {
-            journal.replace(entry.copy(stage = OperationStage.SOURCE_DELETE_PENDING))
-            return SafeMoveResult.SourceDeleteFailed(finalTarget)
-        }
-
-        journal.clear()
-        return SafeMoveResult.Completed(finalTarget)
     }
 
     /**
@@ -94,14 +144,20 @@ class SafeMove(
     suspend fun recover(): RecoveryResult {
         val entry = journal.active() ?: return RecoveryResult.NoPendingOperation
         return when (entry.stage) {
-            OperationStage.PREPARED,
-            OperationStage.TEMP_CREATED,
-            OperationStage.TEMP_COPIED,
-            OperationStage.EXISTING_TARGET_TRASHED -> {
+            OperationStage.PREPARED -> rollbackBeforeSourceMove(entry)
+
+            OperationStage.TRASH_TEMP_CREATED,
+            OperationStage.TRASH_TEMP_COPIED -> {
                 entry.temp?.let { runCatching { storage.delete(it) } }
                 journal.clear()
                 RecoveryResult.RolledBackTemporary
             }
+
+            OperationStage.TRASH_FINALIZED -> rollbackFinalizedTrash(entry)
+
+            OperationStage.EXISTING_TARGET_TRASHED,
+            OperationStage.TEMP_CREATED,
+            OperationStage.TEMP_COPIED -> rollbackBeforeSourceMove(entry)
 
             OperationStage.FINALIZED,
             OperationStage.SOURCE_DELETE_PENDING -> {
@@ -114,7 +170,7 @@ class SafeMove(
                         journal.clear()
                         RecoveryResult.Completed
                     }
-                    targetExists && sourceExists && runCatching { storage.delete(entry.source) }.getOrDefault(false) -> {
+                    targetExists && sourceExists && deleteWithRetries(entry.source) -> {
                         journal.clear()
                         RecoveryResult.Completed
                     }
@@ -124,4 +180,55 @@ class SafeMove(
             }
         }
     }
+
+    private suspend fun rollbackFinalizedTrash(entry: OperationJournalEntry): RecoveryResult {
+        val existing = entry.existingTarget ?: return intervention(entry)
+        val trashed = entry.trashedTarget ?: return intervention(entry)
+        return when {
+            storage.exists(existing) -> {
+                runCatching { storage.delete(trashed) }
+                journal.clear()
+                RecoveryResult.RolledBackTemporary
+            }
+            storage.exists(trashed) -> restoreExistingTarget(entry)
+            else -> intervention(entry)
+        }
+    }
+
+    private suspend fun rollbackBeforeSourceMove(entry: OperationJournalEntry): RecoveryResult {
+        entry.temp?.let { runCatching { storage.delete(it) } }
+        return if (entry.existingTarget == null) {
+            journal.clear()
+            RecoveryResult.RolledBackTemporary
+        } else {
+            restoreExistingTarget(entry)
+        }
+    }
+
+    private suspend fun restoreExistingTarget(entry: OperationJournalEntry): RecoveryResult {
+        val existing = entry.existingTarget ?: return intervention(entry)
+        val trashed = entry.trashedTarget ?: return intervention(entry)
+        if (storage.exists(existing)) {
+            journal.clear()
+            return RecoveryResult.RolledBackTemporary
+        }
+        if (!storage.exists(trashed)) return intervention(entry)
+
+        return try {
+            val temporary = storage.createTemporaryFile(entry.targetParent, ".drawer-restore-")
+            val verification = storage.copy(trashed, temporary)
+            check(verification.isValid) { "trash restore byte count did not match" }
+            storage.finalizeTemporary(temporary, entry.targetParent, entry.targetName)
+            if (!deleteWithRetries(trashed)) return intervention(entry)
+            journal.clear()
+            RecoveryResult.RolledBackTemporary
+        } catch (_: Throwable) {
+            intervention(entry)
+        }
+    }
+
+    private suspend fun deleteWithRetries(ref: StorageRef): Boolean =
+        (1..3).any { runCatching { storage.delete(ref) }.getOrDefault(false) }
+
+    private fun intervention(entry: OperationJournalEntry) = RecoveryResult.NeedsUserIntervention(entry)
 }

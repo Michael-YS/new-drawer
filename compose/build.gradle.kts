@@ -11,5 +11,5 @@ plugins {
 
 allprojects {
     group = "com.drawer.v2"
-    version = providers.gradleProperty("releaseVersion").orElse("0.1.0").get()
+    version = providers.environmentVariable("DRAWER_RELEASE_VERSION").orElse("0.1.0").get()
 }

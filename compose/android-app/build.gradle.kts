@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val releaseVersion = providers.gradleProperty("releaseVersion").orElse("0.1.0").get()
-val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1").get().toInt()
+val releaseVersion = providers.environmentVariable("DRAWER_RELEASE_VERSION").orElse("0.1.0").get()
+val releaseVersionCode = providers.environmentVariable("DRAWER_RELEASE_VERSION_CODE").orElse("1").get().toInt()
 val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
 android {

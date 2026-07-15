@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val releaseVersion = providers.gradleProperty("releaseVersion").orElse("0.1.0").get()
+val releaseVersion = providers.environmentVariable("DRAWER_RELEASE_VERSION").orElse("0.1.0").get()
 
 kotlin {
     jvmToolchain(21)

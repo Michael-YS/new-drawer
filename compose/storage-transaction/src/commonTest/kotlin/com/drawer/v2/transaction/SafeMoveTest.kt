@@ -154,6 +154,20 @@ class SafeMoveTest {
     }
 
     @Test
+    fun `session undo refuses a target replaced outside Drawer`() = runTest {
+        val source = file("source/photo.jpg")
+        val targetDirectory = directory("target")
+        val storage = FakeStorage(mapOf(source to 42L))
+        val move = SafeMove(storage, FakeJournal())
+        val completed = assertIs<SafeMoveResult.Completed>(move.execute(request(source, targetDirectory)))
+        storage.replace(completed.target, size = 42L, modifiedAt = 2L)
+
+        assertIs<UndoResult.NeedsUserIntervention>(move.undo(completed.undo))
+        assertTrue(!storage.exists(source))
+        assertTrue(storage.exists(completed.target))
+    }
+
+    @Test
     fun `recovery restores old target when overwrite stopped before finalizing source`() = runTest {
         val source = file("source/new.jpg")
         val existing = file("target/photo.jpg")
@@ -214,11 +228,12 @@ private class FakeStorage(
     var deleteSucceeds: Boolean = true,
 ) : StorageGateway {
     private val files = initialFiles.toMutableMap()
+    private val modifiedAt = initialFiles.keys.associateWith { 1L }.toMutableMap()
     private var sequence = 0
 
     override suspend fun listChildren(directory: StorageRef): List<StorageEntry> = emptyList()
     override suspend fun metadata(file: StorageRef): MediaMetadata? = files[file]?.let {
-        MediaMetadata(name = file.token.substringAfterLast('/'), sizeBytes = it, modifiedAtEpochMs = 1)
+        MediaMetadata(name = file.token.substringAfterLast('/'), sizeBytes = it, modifiedAtEpochMs = modifiedAt[file] ?: 1L)
     }
     override suspend fun readPrefix(file: StorageRef, maxBytes: Int): ByteArray = ByteArray(0)
     override suspend fun findChild(directory: StorageRef, name: String): StorageEntry? = null
@@ -231,6 +246,7 @@ private class FakeStorage(
     override suspend fun copy(source: StorageRef, destination: StorageRef): CopyVerification {
         val size = checkNotNull(files[source])
         files[destination] = size
+        modifiedAt[destination] = modifiedAt[source] ?: 1L
         return CopyVerification(sourceBytes = size, copiedBytes = size)
     }
 
@@ -241,15 +257,23 @@ private class FakeStorage(
     ): StorageRef {
         val size = checkNotNull(files.remove(temporary))
         return StorageRef(destinationParent.backend, "${destinationParent.token}/$destinationName")
-            .also { files[it] = size }
+            .also {
+                files[it] = size
+                modifiedAt[it] = modifiedAt[temporary] ?: 1L
+            }
     }
 
     override suspend fun delete(ref: StorageRef): Boolean {
         if (!deleteSucceeds) return false
         files.remove(ref)
+        modifiedAt.remove(ref)
         return true
     }
 
     override suspend fun exists(ref: StorageRef): Boolean = files.containsKey(ref)
     fun sizeOf(ref: StorageRef): Long? = files[ref]
+    fun replace(ref: StorageRef, size: Long, modifiedAt: Long) {
+        files[ref] = size
+        this.modifiedAt[ref] = modifiedAt
+    }
 }

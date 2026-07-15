@@ -1,0 +1,122 @@
+CREATE TABLE source_roots (
+  id TEXT NOT NULL PRIMARY KEY,
+  backend TEXT NOT NULL,
+  token TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  available INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE current_target (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  backend TEXT NOT NULL,
+  token TEXT NOT NULL,
+  display_name TEXT NOT NULL
+);
+
+CREATE TABLE known_trash_roots (
+  backend TEXT NOT NULL,
+  token TEXT NOT NULL PRIMARY KEY,
+  display_name TEXT NOT NULL
+);
+
+CREATE TABLE category_first_seen (
+  target_token TEXT NOT NULL,
+  directory_name TEXT NOT NULL,
+  first_seen_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (target_token, directory_name)
+);
+
+CREATE TABLE suppressed_items (
+  source_root_id TEXT NOT NULL,
+  backend TEXT NOT NULL,
+  token TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  modified_at_ms INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  PRIMARY KEY (source_root_id, token)
+);
+
+CREATE TABLE operation_journal (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  operation_id TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  source_backend TEXT NOT NULL,
+  source_token TEXT NOT NULL,
+  source_parent_backend TEXT NOT NULL,
+  source_parent_token TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  target_parent_backend TEXT NOT NULL,
+  target_parent_token TEXT NOT NULL,
+  target_name TEXT NOT NULL,
+  temp_backend TEXT,
+  temp_token TEXT,
+  final_backend TEXT,
+  final_token TEXT,
+  trash_backend TEXT,
+  trash_token TEXT
+);
+
+selectSourceRoots:
+SELECT * FROM source_roots;
+
+upsertSourceRoot:
+INSERT OR REPLACE INTO source_roots(id, backend, token, display_name, available)
+VALUES (?, ?, ?, ?, ?);
+
+deleteSourceRoot:
+DELETE FROM source_roots WHERE id = ?;
+
+setSourceAvailability:
+UPDATE source_roots SET available = ? WHERE id = ?;
+
+selectCurrentTarget:
+SELECT * FROM current_target WHERE singleton = 1;
+
+upsertCurrentTarget:
+INSERT OR REPLACE INTO current_target(singleton, backend, token, display_name)
+VALUES (1, ?, ?, ?);
+
+clearCurrentTarget:
+DELETE FROM current_target WHERE singleton = 1;
+
+upsertTrashRoot:
+INSERT OR REPLACE INTO known_trash_roots(backend, token, display_name)
+VALUES (?, ?, ?);
+
+selectTrashRoots:
+SELECT * FROM known_trash_roots;
+
+upsertCategoryFirstSeen:
+INSERT OR IGNORE INTO category_first_seen(target_token, directory_name, first_seen_at_ms)
+VALUES (?, ?, ?);
+
+selectCategoryFirstSeen:
+SELECT * FROM category_first_seen WHERE target_token = ? ORDER BY first_seen_at_ms DESC;
+
+upsertSuppressedItem:
+INSERT OR REPLACE INTO suppressed_items(
+  source_root_id, backend, token, size_bytes, modified_at_ms, reason
+) VALUES (?, ?, ?, ?, ?, ?);
+
+selectSuppressedItem:
+SELECT reason
+FROM suppressed_items
+WHERE source_root_id = ? AND token = ? AND size_bytes = ? AND modified_at_ms = ?;
+
+deleteSuppressedByReason:
+DELETE FROM suppressed_items WHERE reason = ?;
+
+selectJournal:
+SELECT * FROM operation_journal WHERE singleton = 1;
+
+replaceJournal:
+INSERT OR REPLACE INTO operation_journal(
+  singleton, operation_id, stage,
+  source_backend, source_token,
+  source_parent_backend, source_parent_token, source_name,
+  target_parent_backend, target_parent_token, target_name,
+  temp_backend, temp_token, final_backend, final_token, trash_backend, trash_token
+) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+clearJournal:
+DELETE FROM operation_journal WHERE singleton = 1;

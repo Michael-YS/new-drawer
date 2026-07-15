@@ -1,1 +1,5 @@
 missing_zh.txt
+compose/local.properties
+compose/.gradle/
+compose/build/
+compose/**/build/

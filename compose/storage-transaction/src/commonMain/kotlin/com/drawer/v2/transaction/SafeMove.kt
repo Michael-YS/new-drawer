@@ -146,6 +146,9 @@ class SafeMove(
                 finalTarget = finalTarget,
             )
             journal.replace(entry)
+            val targetFingerprint = storage.metadata(finalTarget)?.let {
+                FileFingerprint(it.sizeBytes, it.modifiedAtEpochMs)
+            } ?: throw IllegalStateException("could not read finalized target metadata")
 
             if (!deleteWithRetries(request.source)) {
                 journal.replace(entry.copy(stage = OperationStage.SOURCE_DELETE_PENDING))
@@ -161,9 +164,7 @@ class SafeMove(
                     target = finalTarget,
                     targetParent = request.targetParent,
                     targetName = request.targetName,
-                    targetFingerprint = storage.metadata(finalTarget)?.let {
-                        FileFingerprint(it.sizeBytes, it.modifiedAtEpochMs)
-                    } ?: throw IllegalStateException("could not read finalized target metadata"),
+                    targetFingerprint = targetFingerprint,
                     displacedTarget = entry.existingTarget,
                     trashedTarget = entry.trashedTarget,
                 ),

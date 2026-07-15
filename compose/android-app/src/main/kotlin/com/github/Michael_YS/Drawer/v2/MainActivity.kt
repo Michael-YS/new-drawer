@@ -108,6 +108,7 @@ private fun AndroidDrawerApp() {
     var confirmOverwrite by remember { mutableStateOf<AndroidConflict?>(null) }
     var renameConflict by remember { mutableStateOf<AndroidConflict?>(null) }
     var pendingSourceDelete by remember { mutableStateOf<PhotoCandidate?>(null) }
+    var settingsOpen by remember { mutableStateOf(false) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -299,6 +300,7 @@ private fun AndroidDrawerApp() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { sourcePicker.launch(null) }) { Text("Add source") }
                     OutlinedButton(onClick = { targetPicker.launch(null) }) { Text("Choose target") }
+                    OutlinedButton(onClick = { settingsOpen = true }) { Text("Settings") }
                 }
                 Text("Target: ${target?.displayName ?: "not selected"}")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -443,6 +445,32 @@ private fun AndroidDrawerApp() {
                     }) { Text("Keep both") }
                 }
             },
+        )
+    }
+    if (settingsOpen) {
+        AlertDialog(
+            onDismissRequest = { settingsOpen = false },
+            title = { Text("Settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Skipped and kept-copy records survive restarts until cleared.")
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { suppressions.clear(SuppressionReason.SKIPPED) }
+                            status = "Cleared skipped items; scanning again."
+                            scan()
+                        }
+                    }) { Text("Clear skipped items") }
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { suppressions.clear(SuppressionReason.KEPT_COPY) }
+                            status = "Kept copies will be checked again."
+                            scan()
+                        }
+                    }) { Text("Recheck kept copies") }
+                }
+            },
+            confirmButton = { Button(onClick = { settingsOpen = false }) { Text("Done") } },
         )
     }
 }

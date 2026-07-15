@@ -112,6 +112,7 @@ private fun DesktopDrawerApp() {
     var confirmOverwrite by remember { mutableStateOf<Conflict?>(null) }
     var renameConflict by remember { mutableStateOf<Conflict?>(null) }
     var pendingSourceDelete by remember { mutableStateOf<PhotoCandidate?>(null) }
+    var settingsOpen by remember { mutableStateOf(false) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -276,6 +277,7 @@ private fun DesktopDrawerApp() {
                             configuration.saveTargetRoot(chosen)
                         }
                     },
+                    onSettings = { settingsOpen = true },
                 )
                 Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     PhotoPanel(photos.firstOrNull(), Modifier.weight(1f))
@@ -407,6 +409,32 @@ private fun DesktopDrawerApp() {
             },
         )
     }
+    if (settingsOpen) {
+        AlertDialog(
+            onDismissRequest = { settingsOpen = false },
+            title = { Text("Settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Skipped and kept-copy records survive restarts until cleared.")
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { suppressions.clear(SuppressionReason.SKIPPED) }
+                            status = "Cleared skipped items; scanning again."
+                            scan()
+                        }
+                    }) { Text("Clear skipped items") }
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { suppressions.clear(SuppressionReason.KEPT_COPY) }
+                            status = "Kept copies will be checked again."
+                            scan()
+                        }
+                    }) { Text("Recheck kept copies") }
+                }
+            },
+            confirmButton = { Button(onClick = { settingsOpen = false }) { Text("Done") } },
+        )
+    }
 }
 
 @Composable
@@ -417,11 +445,13 @@ private fun DirectoryControls(
     onAddSources: () -> Unit,
     onRemoveSource: (SourceRoot) -> Unit,
     onChooseTarget: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onAddSources) { Text("Add source directories") }
             OutlinedButton(onClick = onChooseTarget) { Text("Choose target directory") }
+            OutlinedButton(onClick = onSettings) { Text("Settings") }
             Text("Target: ${target?.displayName ?: "not selected"}")
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

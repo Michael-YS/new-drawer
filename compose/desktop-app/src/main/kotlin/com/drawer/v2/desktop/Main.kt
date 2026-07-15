@@ -64,6 +64,7 @@ import com.drawer.v2.transaction.SafeMoveRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
@@ -117,10 +118,12 @@ private fun DesktopDrawerApp() {
     fun refreshCategories() {
         val configuredTarget = target ?: return
         scope.launch {
-            val directories = storage.listChildren(configuredTarget.directory)
-                .filter { it.kind == StorageEntryKind.DIRECTORY && it.name != TRASH_DIRECTORY }
-            directories.forEach { configuration.categoryFirstSeen(configuredTarget, it.name, System.currentTimeMillis()) }
-            categories = configuration.categoryNames(configuredTarget)
+            categories = withContext(Dispatchers.IO) {
+                val directories = storage.listChildren(configuredTarget.directory)
+                    .filter { it.kind == StorageEntryKind.DIRECTORY && it.name != TRASH_DIRECTORY }
+                directories.forEach { configuration.categoryFirstSeen(configuredTarget, it.name, System.currentTimeMillis()) }
+                configuration.categoryNames(configuredTarget)
+            }
         }
     }
 
@@ -150,7 +153,7 @@ private fun DesktopDrawerApp() {
                 excludedDirectories = setOf(configuredTarget.directory),
                 storage = storage,
                 suppressionStore = suppressions,
-            ).collect { event ->
+            ).flowOn(Dispatchers.IO).collect { event ->
                 when (event) {
                     is ScanEvent.PhotoDiscovered -> photos = (photos + event.photo)
                         .sortedByDescending { it.metadata.modifiedAtEpochMs }
@@ -164,14 +167,16 @@ private fun DesktopDrawerApp() {
 
     fun skip(candidate: PhotoCandidate) {
         scope.launch {
-            suppressions.suppress(
-                SuppressedItem(
-                    sourceRootId = candidate.sourceRootId,
-                    file = candidate.file,
-                    fingerprint = FileFingerprint(candidate.metadata.sizeBytes, candidate.metadata.modifiedAtEpochMs),
-                    reason = SuppressionReason.SKIPPED,
-                ),
-            )
+            withContext(Dispatchers.IO) {
+                suppressions.suppress(
+                    SuppressedItem(
+                        sourceRootId = candidate.sourceRootId,
+                        file = candidate.file,
+                        fingerprint = FileFingerprint(candidate.metadata.sizeBytes, candidate.metadata.modifiedAtEpochMs),
+                        reason = SuppressionReason.SKIPPED,
+                    ),
+                )
+            }
             photos = photos - candidate
         }
     }
@@ -180,8 +185,12 @@ private fun DesktopDrawerApp() {
         val configuredTarget = target ?: return
         scope.launch {
             try {
-                val categoryDirectory = storage.ensureDirectory(configuredTarget.directory, category)
-                val collision = storage.findChild(categoryDirectory, destinationName)
+                val categoryDirectory = withContext(Dispatchers.IO) {
+                    storage.ensureDirectory(configuredTarget.directory, category)
+                }
+                val collision = withContext(Dispatchers.IO) {
+                    storage.findChild(categoryDirectory, destinationName)
+                }
                 if (collision != null && collision.ref != overwrite?.ref) {
                     conflict = Conflict(candidate, category, categoryDirectory, collision)
                     return@launch
@@ -190,21 +199,23 @@ private fun DesktopDrawerApp() {
                     status = "Cannot overwrite a directory. Rename the photo instead."
                     return@launch
                 }
-                val overwritePlan = collision?.let { existing ->
-                    val trash = storage.ensureDirectory(configuredTarget.directory, TRASH_DIRECTORY)
-                    ExistingTargetToTrash(existing.ref, trash, uniqueTrashName(storage, trash, existing.name))
+                val result = withContext(Dispatchers.IO) {
+                    val overwritePlan = collision?.let { existing ->
+                        val trash = storage.ensureDirectory(configuredTarget.directory, TRASH_DIRECTORY)
+                        ExistingTargetToTrash(existing.ref, trash, uniqueTrashName(storage, trash, existing.name))
+                    }
+                    SafeMove(storage, journal).execute(
+                        SafeMoveRequest(
+                            operationId = UUID.randomUUID().toString(),
+                            source = candidate.file,
+                            sourceParent = candidate.parent,
+                            sourceName = candidate.metadata.name,
+                            targetParent = categoryDirectory,
+                            targetName = destinationName,
+                            overwrite = overwritePlan,
+                        ),
+                    )
                 }
-                val result = SafeMove(storage, journal).execute(
-                    SafeMoveRequest(
-                        operationId = UUID.randomUUID().toString(),
-                        source = candidate.file,
-                        sourceParent = candidate.parent,
-                        sourceName = candidate.metadata.name,
-                        targetParent = categoryDirectory,
-                        targetName = destinationName,
-                        overwrite = overwritePlan,
-                    ),
-                )
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
                         photos = photos - candidate
@@ -222,7 +233,7 @@ private fun DesktopDrawerApp() {
     }
 
     LaunchedEffect(Unit) {
-        val recovery = SafeMove(storage, journal).recover()
+        val recovery = withContext(Dispatchers.IO) { SafeMove(storage, journal).recover() }
         status = when (recovery) {
             is com.drawer.v2.transaction.RecoveryResult.NoPendingOperation -> status
             is com.drawer.v2.transaction.RecoveryResult.Completed -> "Recovered the previous move."
@@ -278,7 +289,9 @@ private fun DesktopDrawerApp() {
                                 val configuredTarget = target
                                 if (configuredTarget != null) {
                                     scope.launch {
-                                        runCatching { storage.ensureDirectory(configuredTarget.directory, name) }
+                                        runCatching {
+                                            withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
+                                        }
                                             .onSuccess {
                                                 configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis())
                                                 categories = configuration.categoryNames(configuredTarget)

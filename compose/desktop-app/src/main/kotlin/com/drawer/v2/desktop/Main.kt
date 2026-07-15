@@ -345,37 +345,35 @@ private fun DesktopDrawerApp() {
                     },
                     onUndo = if (undoStack.isNotEmpty()) ::undoLastMove else null,
                 )
-                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    PhotoPanel(photos.firstOrNull(), Modifier.weight(1f))
-                    CategoryPanel(
-                        categories = categories,
-                        newCategory = newCategory,
-                        onNewCategoryChanged = { newCategory = it },
-                        onCreate = {
-                            val name = newCategory.trim()
-                            if (name.isNotEmpty()) {
-                                val configuredTarget = target
-                                if (configuredTarget != null) {
-                                    scope.launch {
-                                        runCatching {
-                                            withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
-                                        }
-                                            .onSuccess {
-                                                configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis())
-                                                categories = configuration.categoryNames(configuredTarget)
-                                                newCategory = ""
-                                            }
-                                            .onFailure { status = "Invalid category: ${it.message}" }
+                PhotoPanel(photos.firstOrNull(), Modifier.weight(1f).fillMaxWidth())
+                CategoryPanel(
+                    categories = categories,
+                    newCategory = newCategory,
+                    onNewCategoryChanged = { newCategory = it },
+                    onCreate = {
+                        val name = newCategory.trim()
+                        if (name.isNotEmpty()) {
+                            val configuredTarget = target
+                            if (configuredTarget != null) {
+                                scope.launch {
+                                    runCatching {
+                                        withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
                                     }
+                                        .onSuccess {
+                                            configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis())
+                                            categories = configuration.categoryNames(configuredTarget)
+                                            newCategory = ""
+                                        }
+                                        .onFailure { status = "Invalid category: ${it.message}" }
                                 }
                             }
-                        },
-                        movesEnabled = pendingSourceDelete == null,
-                        onCategory = { photos.firstOrNull()?.let { candidate -> move(candidate, it) } },
-                        onSkip = { photos.firstOrNull()?.let(::skip) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                        }
+                    },
+                    movesEnabled = pendingSourceDelete == null,
+                    onCategory = { photos.firstOrNull()?.let { candidate -> move(candidate, it) } },
+                    onSkip = { photos.firstOrNull()?.let(::skip) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -582,7 +580,7 @@ private fun DirectoryControls(
 
 @Composable
 private fun PhotoPanel(photo: PhotoCandidate?, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.fillMaxSize(), tonalElevation = 1.dp) {
+    Surface(modifier = modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         if (photo == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No pending photo") }
         } else {
@@ -606,7 +604,7 @@ private fun CategoryPanel(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize(), tonalElevation = 1.dp) {
+    Surface(modifier = modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Categories", style = MaterialTheme.typography.titleMedium)
             Row(
@@ -628,7 +626,6 @@ private fun CategoryPanel(
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = onCreate) { Text("Create") }
             }
-            Spacer(Modifier.weight(1f))
             OutlinedButton(enabled = movesEnabled, onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Skip for now") }
         }
     }

@@ -24,8 +24,32 @@ data class ExistingTargetToTrash(
 )
 
 sealed interface SafeMoveResult {
-    data class Completed(val target: StorageRef) : SafeMoveResult
+    data class Completed(
+        val target: StorageRef,
+        /** Memory-only token; callers intentionally discard it when the session ends. */
+        val undo: SessionUndo,
+    ) : SafeMoveResult
     data class SourceDeleteFailed(val target: StorageRef) : SafeMoveResult
+}
+
+/**
+ * Enough information to reverse one already-completed move during the current
+ * process lifetime. It is deliberately not persisted: closing the app ends an
+ * undo session, while Drawer Trash remains available in the file system.
+ */
+data class SessionUndo(
+    val sourceParent: StorageRef,
+    val sourceName: String,
+    val target: StorageRef,
+    val targetParent: StorageRef,
+    val targetName: String,
+    val displacedTarget: StorageRef? = null,
+    val trashedTarget: StorageRef? = null,
+)
+
+sealed interface UndoResult {
+    data object Completed : UndoResult
+    data class NeedsUserIntervention(val detail: String) : UndoResult
 }
 
 sealed interface RecoveryResult {
@@ -127,7 +151,18 @@ class SafeMove(
             }
 
             journal.clear()
-            return SafeMoveResult.Completed(finalTarget)
+            return SafeMoveResult.Completed(
+                target = finalTarget,
+                undo = SessionUndo(
+                    sourceParent = request.sourceParent,
+                    sourceName = request.sourceName,
+                    target = finalTarget,
+                    targetParent = request.targetParent,
+                    targetName = request.targetName,
+                    displacedTarget = entry.existingTarget,
+                    trashedTarget = entry.trashedTarget,
+                ),
+            )
         } catch (error: Throwable) {
             // The source has not been deleted in this block. If an overwrite
             // was already staged, restore its old target before surfacing the
@@ -201,6 +236,51 @@ class SafeMove(
             RecoveryResult.RolledBackTemporary
         } else {
             restoreExistingTarget(entry)
+        }
+    }
+
+    /**
+     * Best-effort, session-only reversal of a completed move. The forward
+     * target stays in place until a verified copy has been finalized at its
+     * original source name. If any later delete/restore step fails, both the
+     * known-good copy and any trash copy are retained for manual resolution.
+     */
+    suspend fun undo(move: SessionUndo): UndoResult {
+        if (!storage.exists(move.target)) return UndoResult.NeedsUserIntervention("the moved file is missing")
+        if (storage.findChild(move.sourceParent, move.sourceName) != null) {
+            return UndoResult.NeedsUserIntervention("the original source name is already occupied")
+        }
+
+        val restoredSource = try {
+            val temporary = storage.createTemporaryFile(move.sourceParent, ".drawer-undo-")
+            val verification = storage.copy(move.target, temporary)
+            check(verification.isValid) { "undo source copy byte count did not match" }
+            storage.finalizeTemporary(temporary, move.sourceParent, move.sourceName)
+        } catch (_: Throwable) {
+            return UndoResult.NeedsUserIntervention("could not restore the original source copy")
+        }
+        if (!storage.exists(restoredSource)) return UndoResult.NeedsUserIntervention("restored source could not be verified")
+        if (!deleteWithRetries(move.target)) {
+            return UndoResult.NeedsUserIntervention("source restored, but the moved copy could not be deleted")
+        }
+
+        val displaced = move.displacedTarget ?: return UndoResult.Completed
+        val trashed = move.trashedTarget
+            ?: return UndoResult.NeedsUserIntervention("the overwritten file has no trash record")
+        if (storage.exists(displaced)) return UndoResult.NeedsUserIntervention("the overwritten target name is occupied")
+        if (!storage.exists(trashed)) return UndoResult.NeedsUserIntervention("the overwritten file is missing from Drawer Trash")
+        return try {
+            val temporary = storage.createTemporaryFile(move.targetParent, ".drawer-undo-restore-")
+            val verification = storage.copy(trashed, temporary)
+            check(verification.isValid) { "undo trash restore byte count did not match" }
+            storage.finalizeTemporary(temporary, move.targetParent, move.targetName)
+            if (!deleteWithRetries(trashed)) {
+                UndoResult.NeedsUserIntervention("overwritten target restored, but its trash copy could not be deleted")
+            } else {
+                UndoResult.Completed
+            }
+        } catch (_: Throwable) {
+            UndoResult.NeedsUserIntervention("could not restore the overwritten target from Drawer Trash")
         }
     }
 

@@ -103,6 +103,7 @@ class SafeMoveTest {
 
         val result = SafeMove(storage, journal).execute(
             request(source = source, target = targetDirectory).copy(
+                sourceName = "new.jpg",
                 overwrite = ExistingTargetToTrash(existing, trashDirectory, "photo.jpg"),
             ),
         )
@@ -112,6 +113,44 @@ class SafeMoveTest {
         assertEquals(99L, storage.sizeOf(file("target/Drawer Trash/photo.jpg")))
         assertTrue(!storage.exists(source))
         assertNull(journal.entry)
+    }
+
+    @Test
+    fun `session undo restores the source and removes the completed target`() = runTest {
+        val source = file("source/photo.jpg")
+        val targetDirectory = directory("target")
+        val storage = FakeStorage(mapOf(source to 42L))
+        val move = SafeMove(storage, FakeJournal())
+
+        val completed = assertIs<SafeMoveResult.Completed>(move.execute(request(source, targetDirectory)))
+
+        assertEquals(UndoResult.Completed, move.undo(completed.undo))
+        assertEquals(42L, storage.sizeOf(source))
+        assertTrue(!storage.exists(completed.target))
+    }
+
+    @Test
+    fun `session undo restores an overwritten target from trash`() = runTest {
+        val source = file("source/new.jpg")
+        val targetDirectory = directory("target")
+        val existing = file("target/photo.jpg")
+        val trashDirectory = directory("target/Drawer Trash")
+        val storage = FakeStorage(mapOf(source to 42L, existing to 99L))
+        val move = SafeMove(storage, FakeJournal())
+
+        val completed = assertIs<SafeMoveResult.Completed>(
+            move.execute(
+                request(source, targetDirectory).copy(
+                    sourceName = "new.jpg",
+                    overwrite = ExistingTargetToTrash(existing, trashDirectory, "photo.jpg"),
+                ),
+            ),
+        )
+
+        assertEquals(UndoResult.Completed, move.undo(completed.undo))
+        assertEquals(42L, storage.sizeOf(source))
+        assertEquals(99L, storage.sizeOf(existing))
+        assertTrue(!storage.exists(file("target/Drawer Trash/photo.jpg")))
     }
 
     @Test

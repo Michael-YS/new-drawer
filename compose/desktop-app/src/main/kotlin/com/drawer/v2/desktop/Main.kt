@@ -65,6 +65,8 @@ import com.drawer.v2.storage.summarizeDirectory
 import com.drawer.v2.transaction.ExistingTargetToTrash
 import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
+import com.drawer.v2.transaction.SessionUndo
+import com.drawer.v2.transaction.UndoResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -119,6 +121,7 @@ private fun DesktopDrawerApp() {
     var settingsOpen by remember { mutableStateOf(false) }
     var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
     var trashSummary by remember { mutableStateOf(TrashSummary()) }
+    var undoStack by remember { mutableStateOf(emptyList<SessionUndo>()) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -226,6 +229,7 @@ private fun DesktopDrawerApp() {
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
                         photos = photos - candidate
+                        undoStack = undoStack + result.undo
                         "Moved to $category."
                     }
                     is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed -> {
@@ -235,6 +239,21 @@ private fun DesktopDrawerApp() {
                 }
             } catch (error: Throwable) {
                 status = "Move failed: ${error.message ?: error::class.simpleName}"
+            }
+        }
+    }
+
+    fun undoLastMove() {
+        val latest = undoStack.lastOrNull() ?: return
+        scope.launch {
+            status = "Undoing the last move..."
+            when (val result = withContext(Dispatchers.IO) { SafeMove(storage, journal).undo(latest) }) {
+                UndoResult.Completed -> {
+                    undoStack = undoStack.dropLast(1)
+                    status = "Last move undone."
+                    scan()
+                }
+                is UndoResult.NeedsUserIntervention -> status = "Undo needs manual attention: ${result.detail}"
             }
         }
     }
@@ -287,6 +306,7 @@ private fun DesktopDrawerApp() {
                         settingsOpen = true
                         scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, target) } }
                     },
+                    onUndo = if (undoStack.isNotEmpty()) ::undoLastMove else null,
                 )
                 Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     PhotoPanel(photos.firstOrNull(), Modifier.weight(1f))
@@ -490,12 +510,14 @@ private fun DirectoryControls(
     onRemoveSource: (SourceRoot) -> Unit,
     onChooseTarget: () -> Unit,
     onSettings: () -> Unit,
+    onUndo: (() -> Unit)?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onAddSources) { Text("Add source directories") }
             OutlinedButton(onClick = onChooseTarget) { Text("Choose target directory") }
             OutlinedButton(onClick = onSettings) { Text("Settings") }
+            OutlinedButton(enabled = onUndo != null, onClick = { onUndo?.invoke() }) { Text("Undo last move") }
             Text("Target: ${target?.displayName ?: "not selected"}")
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

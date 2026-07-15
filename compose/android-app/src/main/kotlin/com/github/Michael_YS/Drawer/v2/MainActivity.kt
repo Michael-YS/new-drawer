@@ -68,6 +68,8 @@ import com.drawer.v2.storage.summarizeDirectory
 import com.drawer.v2.transaction.ExistingTargetToTrash
 import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
+import com.drawer.v2.transaction.SessionUndo
+import com.drawer.v2.transaction.UndoResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -115,6 +117,7 @@ private fun AndroidDrawerApp() {
     var settingsOpen by remember { mutableStateOf(false) }
     var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
     var trashSummary by remember { mutableStateOf(TrashSummary()) }
+    var undoStack by remember { mutableStateOf(emptyList<SessionUndo>()) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -225,6 +228,7 @@ private fun AndroidDrawerApp() {
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
                         photos = photos - candidate
+                        undoStack = undoStack + result.undo
                         "Moved to $category."
                     }
                     is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed -> {
@@ -234,6 +238,21 @@ private fun AndroidDrawerApp() {
                 }
             } catch (error: Throwable) {
                 status = "Move failed: ${error.message ?: error::class.simpleName}"
+            }
+        }
+    }
+
+    fun undoLastMove() {
+        val latest = undoStack.lastOrNull() ?: return
+        scope.launch {
+            status = "Undoing the last move..."
+            when (val result = withContext(Dispatchers.IO) { SafeMove(storage, journal).undo(latest) }) {
+                UndoResult.Completed -> {
+                    undoStack = undoStack.dropLast(1)
+                    status = "Last move undone."
+                    scan()
+                }
+                is UndoResult.NeedsUserIntervention -> status = "Undo needs manual attention: ${result.detail}"
             }
         }
     }
@@ -310,6 +329,10 @@ private fun AndroidDrawerApp() {
                         settingsOpen = true
                         scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, target) } }
                     }) { Text("Settings") }
+                    OutlinedButton(
+                        enabled = undoStack.isNotEmpty(),
+                        onClick = ::undoLastMove,
+                    ) { Text("Undo last move") }
                 }
                 Text("Target: ${target?.displayName ?: "not selected"}")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

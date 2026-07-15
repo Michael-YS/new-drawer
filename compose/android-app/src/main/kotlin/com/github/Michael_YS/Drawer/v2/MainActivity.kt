@@ -386,7 +386,9 @@ private fun AndroidDrawerApp() {
                     Button(onClick = {
                         val name = newCategory.trim()
                         val configuredTarget = target
-                        if (name.isNotEmpty() && configuredTarget != null) scope.launch {
+                        if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) {
+                            status = "$TRASH_DIRECTORY is reserved."
+                        } else if (name.isNotEmpty() && configuredTarget != null) scope.launch {
                             runCatching {
                                 withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
                             }

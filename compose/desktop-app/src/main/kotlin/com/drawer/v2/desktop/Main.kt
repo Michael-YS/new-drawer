@@ -363,7 +363,9 @@ private fun DesktopDrawerApp() {
                     onNewCategoryChanged = { newCategory = it },
                     onCreate = {
                         val name = newCategory.trim()
-                        if (name.isNotEmpty()) {
+                        if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) {
+                            status = "$TRASH_DIRECTORY is reserved."
+                        } else if (name.isNotEmpty()) {
                             val configuredTarget = target
                             if (configuredTarget != null) {
                                 scope.launch {

@@ -118,6 +118,7 @@ private fun AndroidDrawerApp() {
     var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
     var trashSummary by remember { mutableStateOf(TrashSummary()) }
     var undoStack by remember { mutableStateOf(emptyList<SessionUndo>()) }
+    var pendingDirectoryChange by remember { mutableStateOf<(() -> Unit)?>(null) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -257,6 +258,10 @@ private fun AndroidDrawerApp() {
         }
     }
 
+    fun requestDirectoryChange(change: () -> Unit) {
+        if (scanJob?.isActive == true) pendingDirectoryChange = change else change()
+    }
+
     val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
@@ -274,11 +279,13 @@ private fun AndroidDrawerApp() {
                     status = it.message ?: "Could not retain source permission."
                     return@onSuccess
                 }
-                val nestedRoots = sources.filter { storage.isSameOrDescendant(it.directory, root.directory) }
-                nestedRoots.forEach { configuration.removeSourceRoot(it.id) }
-                sources = sources - nestedRoots
-                configuration.saveSourceRoot(root)
-                sources = sources + root
+                requestDirectoryChange {
+                    val nestedRoots = sources.filter { storage.isSameOrDescendant(it.directory, root.directory) }
+                    nestedRoots.forEach { configuration.removeSourceRoot(it.id) }
+                    sources = sources - nestedRoots
+                    configuration.saveSourceRoot(root)
+                    sources = sources + root
+                }
             }
         }.onFailure { status = it.message ?: "Could not add source directory." }
     }
@@ -295,8 +302,10 @@ private fun AndroidDrawerApp() {
                     status = it.message ?: "Could not retain target permission."
                     return@onSuccess
                 }
-                target = chosen
-                configuration.saveTargetRoot(chosen)
+                requestDirectoryChange {
+                    target = chosen
+                    configuration.saveTargetRoot(chosen)
+                }
             }
         }.onFailure { status = it.message ?: "Could not select target directory." }
     }
@@ -338,8 +347,10 @@ private fun AndroidDrawerApp() {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     sources.forEach { source ->
                         FilterChip(selected = true, onClick = {
-                            configuration.removeSourceRoot(source.id)
-                            sources = sources - source
+                            requestDirectoryChange {
+                                configuration.removeSourceRoot(source.id)
+                                sources = sources - source
+                            }
                         }, label = { Text("${source.displayName} ×") })
                     }
                 }
@@ -538,6 +549,21 @@ private fun AndroidDrawerApp() {
                 }) { Text("Permanently delete") }
             },
             dismissButton = { OutlinedButton(onClick = { clearTrashConfirmationOpen = false }) { Text("Cancel") } },
+        )
+    }
+    pendingDirectoryChange?.let { change ->
+        AlertDialog(
+            onDismissRequest = { pendingDirectoryChange = null },
+            title = { Text("Change directories while scanning?") },
+            text = { Text("The current background scan will be interrupted, then the new directory selection will be used.") },
+            confirmButton = {
+                Button(onClick = {
+                    scanJob?.cancel()
+                    pendingDirectoryChange = null
+                    change()
+                }) { Text("Interrupt scan and change") }
+            },
+            dismissButton = { OutlinedButton(onClick = { pendingDirectoryChange = null }) { Text("Keep current scan") } },
         )
     }
 }

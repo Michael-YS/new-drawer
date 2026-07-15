@@ -122,6 +122,7 @@ private fun DesktopDrawerApp() {
     var clearTrashConfirmationOpen by remember { mutableStateOf(false) }
     var trashSummary by remember { mutableStateOf(TrashSummary()) }
     var undoStack by remember { mutableStateOf(emptyList<SessionUndo>()) }
+    var pendingDirectoryChange by remember { mutableStateOf<(() -> Unit)?>(null) }
     var renameTo by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
 
@@ -258,6 +259,10 @@ private fun DesktopDrawerApp() {
         }
     }
 
+    fun requestDirectoryChange(change: () -> Unit) {
+        if (scanJob?.isActive == true) pendingDirectoryChange = change else change()
+    }
+
     LaunchedEffect(Unit) {
         val recovery = withContext(Dispatchers.IO) { SafeMove(storage, journal).recover() }
         status = when (recovery) {
@@ -287,19 +292,25 @@ private fun DesktopDrawerApp() {
                             SourceRoot(UUID.randomUUID().toString(), storage.directory(path), path.fileName.toString(), true)
                         }.filter { newRoot -> sources.none { it.directory == newRoot.directory } }
                             .let { added ->
-                                added.forEach(configuration::saveSourceRoot)
-                                sources = sources + added
+                                if (added.isNotEmpty()) requestDirectoryChange {
+                                    added.forEach(configuration::saveSourceRoot)
+                                    sources = sources + added
+                                }
                             }
                     },
                     onRemoveSource = { root ->
-                        configuration.removeSourceRoot(root.id)
-                        sources = sources - root
+                        requestDirectoryChange {
+                            configuration.removeSourceRoot(root.id)
+                            sources = sources - root
+                        }
                     },
                     onChooseTarget = {
                         chooseDirectory()?.let { path ->
                             val chosen = TargetRoot(storage.directory(path), path.fileName.toString())
-                            target = chosen
-                            configuration.saveTargetRoot(chosen)
+                            requestDirectoryChange {
+                                target = chosen
+                                configuration.saveTargetRoot(chosen)
+                            }
                         }
                     },
                     onSettings = {
@@ -497,6 +508,21 @@ private fun DesktopDrawerApp() {
                 }) { Text("Permanently delete") }
             },
             dismissButton = { OutlinedButton(onClick = { clearTrashConfirmationOpen = false }) { Text("Cancel") } },
+        )
+    }
+    pendingDirectoryChange?.let { change ->
+        AlertDialog(
+            onDismissRequest = { pendingDirectoryChange = null },
+            title = { Text("Change directories while scanning?") },
+            text = { Text("The current background scan will be interrupted, then the new directory selection will be used.") },
+            confirmButton = {
+                Button(onClick = {
+                    scanJob?.cancel()
+                    pendingDirectoryChange = null
+                    change()
+                }) { Text("Interrupt scan and change") }
+            },
+            dismissButton = { OutlinedButton(onClick = { pendingDirectoryChange = null }) { Text("Keep current scan") } },
         )
     }
 }

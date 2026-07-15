@@ -29,6 +29,9 @@ compose.desktop {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
             packageName = "Drawer-v2"
             packageVersion = releaseVersion
+            windows {
+                msiPackageVersion = releaseVersion
+            }
         }
     }
 }

@@ -192,6 +192,10 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
 
     private fun validateSegment(name: String) {
         require(name.isNotBlank() && name.none { it in "\\/:*?\"<>|" } && !name.endsWith('.') && !name.endsWith(' '))
+        val stem = name.substringBefore('.').uppercase()
+        require(stem !in setOf("CON", "PRN", "AUX", "NUL") && !stem.matches(Regex("COM[1-9]|LPT[1-9]"))) {
+            "name is reserved by Windows"
+        }
     }
 
     private data class SafToken(val treeUri: Uri, val documentUri: Uri)

@@ -141,6 +141,13 @@ class NioStorageGateway : StorageGateway {
         require(name.isNotBlank()) { "name must not be blank" }
         require(name.none { it in "\\/:*?\"<>|" }) { "name contains an unsupported character" }
         require(!name.endsWith('.') && !name.endsWith(' ')) { "name must not end in a dot or space" }
+        require(!isReservedWindowsName(name)) { "name is reserved by Windows" }
+    }
+
+    private fun isReservedWindowsName(name: String): Boolean {
+        val stem = name.substringBefore('.').uppercase()
+        return stem in setOf("CON", "PRN", "AUX", "NUL") ||
+            stem.matches(Regex("COM[1-9]|LPT[1-9]"))
     }
 
     private fun imageDimensions(file: Path): Pair<Int, Int>? = runCatching {

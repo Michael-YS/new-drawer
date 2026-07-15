@@ -69,6 +69,19 @@ class NioStorageGatewayTest {
     }
 
     @Test
+    fun `Windows reserved directory names are rejected`() = runBlocking {
+        val root = Files.createTempDirectory("drawer-nio-reserved")
+        try {
+            val gateway = NioStorageGateway()
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                gateway.ensureDirectory(gateway.directory(root), "CON")
+            }
+        } finally {
+            Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+
+    @Test
     fun `trash summary and clear preserve the trash root`() = runBlocking {
         val root = Files.createTempDirectory("drawer-nio-trash")
         try {

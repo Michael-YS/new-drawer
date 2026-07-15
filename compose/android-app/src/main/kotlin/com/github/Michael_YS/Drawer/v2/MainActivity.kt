@@ -337,7 +337,7 @@ private fun AndroidDrawerApp() {
                     OutlinedButton(onClick = { targetPicker.launch(null) }) { Text("Choose target") }
                     OutlinedButton(onClick = {
                         settingsOpen = true
-                        scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, target) } }
+                        scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, configuration.trashRoots()) } }
                     }) { Text("Settings") }
                     OutlinedButton(
                         enabled = undoStack.isNotEmpty(),
@@ -540,7 +540,7 @@ private fun AndroidDrawerApp() {
                 Button(enabled = acknowledged, onClick = {
                     scope.launch {
                         runCatching {
-                            withContext(Dispatchers.IO) { emptyTrash(storage, target) }
+                            withContext(Dispatchers.IO) { emptyTrash(storage, configuration.trashRoots()) }
                         }.onSuccess { deleted ->
                             trashSummary = TrashSummary()
                             status = "Permanently deleted ${deleted.fileCount} files from Drawer Trash."
@@ -634,16 +634,24 @@ private fun suggestedName(original: String): String {
     return "$stem (1)$extension"
 }
 
-private suspend fun readTrashSummary(storage: StorageGateway, target: TargetRoot?): TrashSummary {
-    val root = target ?: return TrashSummary()
-    val trash = storage.findChild(root.directory, TRASH_DIRECTORY) ?: return TrashSummary()
-    return if (trash.kind == StorageEntryKind.DIRECTORY) summarizeDirectory(storage, trash.ref) else TrashSummary()
+private suspend fun readTrashSummary(storage: StorageGateway, roots: List<TargetRoot>): TrashSummary {
+    return roots.fold(TrashSummary()) { summary, root ->
+        val child = runCatching {
+            val trash = storage.findChild(root.directory, TRASH_DIRECTORY)
+            if (trash?.kind == StorageEntryKind.DIRECTORY) summarizeDirectory(storage, trash.ref) else TrashSummary()
+        }.getOrDefault(TrashSummary())
+        TrashSummary(summary.fileCount + child.fileCount, summary.totalBytes + child.totalBytes)
+    }
 }
 
-private suspend fun emptyTrash(storage: StorageGateway, target: TargetRoot?): TrashSummary {
-    val root = target ?: return TrashSummary()
-    val trash = storage.findChild(root.directory, TRASH_DIRECTORY) ?: return TrashSummary()
-    return if (trash.kind == StorageEntryKind.DIRECTORY) clearDirectoryContents(storage, trash.ref) else TrashSummary()
+private suspend fun emptyTrash(storage: StorageGateway, roots: List<TargetRoot>): TrashSummary {
+    return roots.fold(TrashSummary()) { summary, root ->
+        val child = runCatching {
+            val trash = storage.findChild(root.directory, TRASH_DIRECTORY)
+            if (trash?.kind == StorageEntryKind.DIRECTORY) clearDirectoryContents(storage, trash.ref) else TrashSummary()
+        }.getOrElse { throw it }
+        TrashSummary(summary.fileCount + child.fileCount, summary.totalBytes + child.totalBytes)
+    }
 }
 
 private fun formatBytes(bytes: Long): String = when {

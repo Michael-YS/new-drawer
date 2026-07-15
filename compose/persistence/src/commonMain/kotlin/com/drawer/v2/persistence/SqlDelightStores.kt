@@ -138,6 +138,10 @@ class SqlDelightConfigurationStore(
         queries.upsertTrashRoot(target.directory.backend.name, target.directory.token, target.displayName)
     }
 
+    fun trashRoots(): List<TargetRoot> = queries.selectTrashRoots(
+        mapper = { backend, token, displayName -> TargetRoot(ref(backend, token), displayName) },
+    ).executeAsList()
+
     fun categoryFirstSeen(target: TargetRoot, name: String, nowEpochMs: Long) {
         queries.upsertCategoryFirstSeen(target.directory.token, name, nowEpochMs)
     }

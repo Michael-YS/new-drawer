@@ -14,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.io.path.createTempDirectory
 
 class SqlDelightStoresTest {
     @Test
@@ -51,6 +52,15 @@ class SqlDelightStoresTest {
         assertFalse(store.isSuppressed("source-1", file, FileFingerprint(13, 34)))
         store.clear(SuppressionReason.SKIPPED)
         assertFalse(store.isSuppressed("source-1", file, FileFingerprint(12, 34)))
+    }
+
+    @Test
+    fun `desktop factory reopens an existing local index`() {
+        val file = createTempDirectory("drawer-db-").resolve("drawer.db").toFile()
+        val target = com.drawer.v2.domain.TargetRoot(ref("target"), "Target")
+        SqlDelightConfigurationStore(createDesktopDrawerDatabase(file)).saveTargetRoot(target)
+
+        assertEquals(target, SqlDelightConfigurationStore(createDesktopDrawerDatabase(file)).targetRoot())
     }
 
     private fun database(): DrawerDatabase {

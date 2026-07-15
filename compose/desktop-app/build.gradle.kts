@@ -10,7 +10,14 @@ kotlin {
 
 dependencies {
     implementation(project(":compose-ui"))
+    implementation(project(":persistence"))
+    implementation(project(":scanner"))
+    implementation(project(":storage-contract"))
+    implementation(project(":storage-nio"))
+    implementation(project(":storage-transaction"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
 }
 
 compose.desktop {

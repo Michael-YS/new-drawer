@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -60,9 +61,11 @@ import com.drawer.v2.storage.nio.NioStorageGateway
 import com.drawer.v2.transaction.ExistingTargetToTrash
 import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.io.File
 import java.nio.file.Path
@@ -511,15 +514,18 @@ private fun PhotoMetadata(photo: PhotoCandidate) {
 
 @Composable
 private fun DesktopPhoto(token: String, modifier: Modifier = Modifier) {
-    val bitmap = remember(token) {
-        runCatching { Image.makeFromEncoded(File(token).readBytes()).toComposeImageBitmap() }.getOrNull()
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, token) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { Image.makeFromEncoded(File(token).readBytes()).toComposeImageBitmap() }.getOrNull()
+        }
     }
-    if (bitmap == null) {
+    val image = bitmap
+    if (image == null) {
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             Text("Preview unavailable")
         }
     } else {
-        Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Fit)
+        Image(image, contentDescription = null, modifier = modifier, contentScale = ContentScale.Fit)
     }
 }
 

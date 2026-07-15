@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -461,18 +462,30 @@ private fun AndroidPhoto(photo: PhotoCandidate?, modifier: Modifier = Modifier) 
 @Composable
 private fun AndroidImage(ref: StorageRef, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap = remember(ref) {
-        runCatching {
-            val documentUri = Uri.parse(ref.token.substringAfter('\n'))
-            context.contentResolver.openInputStream(documentUri).use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
-        }.getOrNull()
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, ref) {
+        value = withContext(Dispatchers.IO) { decodePreview(context, ref) }
     }
-    if (bitmap == null) {
+    val image = bitmap
+    if (image == null) {
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text("Preview unavailable") }
     } else {
-        Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Fit)
+        Image(image, contentDescription = null, modifier = modifier, contentScale = ContentScale.Fit)
     }
 }
+
+private fun decodePreview(context: android.content.Context, ref: StorageRef): androidx.compose.ui.graphics.ImageBitmap? =
+    runCatching {
+        val documentUri = Uri.parse(ref.token.substringAfter('\n'))
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(documentUri).use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        val options = BitmapFactory.Options().apply {
+            var sample = 1
+            while (bounds.outWidth / sample > MAX_PREVIEW_EDGE || bounds.outHeight / sample > MAX_PREVIEW_EDGE) sample *= 2
+            inSampleSize = sample
+        }
+        context.contentResolver.openInputStream(documentUri).use { BitmapFactory.decodeStream(it, null, options) }?.asImageBitmap()
+    }.getOrNull()
 
 private suspend fun uniqueTrashName(storage: SafStorageGateway, trash: StorageRef, original: String): String {
     if (storage.findChild(trash, original) == null) return original
@@ -492,3 +505,4 @@ private fun suggestedName(original: String): String {
 }
 
 private const val TRASH_DIRECTORY = "Drawer Trash"
+private const val MAX_PREVIEW_EDGE = 1600

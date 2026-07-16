@@ -29,6 +29,14 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
         return ref(treeUri, DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId))
     }
 
+    /** Whether this process can still read and modify the persisted tree grant. */
+    fun hasPersistedReadWriteGrant(directory: StorageRef): Boolean {
+        val treeUri = token(directory).treeUri
+        return resolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isReadPermission && it.isWritePermission
+        }
+    }
+
     /** True when [candidate] is [ancestor] or sits beneath it in the local/SD tree. */
     fun isSameOrDescendant(candidate: StorageRef, ancestor: StorageRef): Boolean {
         val candidateUri = token(candidate).documentUri

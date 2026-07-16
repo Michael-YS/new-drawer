@@ -115,12 +115,26 @@ private fun AndroidDrawerApp() {
     val suppressions = remember { SqlDelightSuppressionStore(database) }
     val scope = rememberCoroutineScope()
 
-    var sources by remember { mutableStateOf(configuration.sourceRoots()) }
-    var target by remember { mutableStateOf(configuration.targetRoot()) }
+    val restoredSources = remember { configuration.sourceRoots() }
+    val restoredTarget = remember { configuration.targetRoot() }
+    val unavailableSources = remember { restoredSources.any { !storage.hasPersistedReadWriteGrant(it.directory) } }
+    val unavailableTarget = remember { restoredTarget?.let { !storage.hasPersistedReadWriteGrant(it.directory) } == true }
+    var sources by remember {
+        mutableStateOf(restoredSources.map { it.copy(available = storage.hasPersistedReadWriteGrant(it.directory)) })
+    }
+    var target by remember { mutableStateOf(restoredTarget?.takeUnless { unavailableTarget }) }
     var photos by remember { mutableStateOf(emptyList<PhotoCandidate>()) }
     var sessionSummary by remember { mutableStateOf(SessionSummary()) }
     var categories by remember { mutableStateOf(emptyList<String>()) }
-    var status by remember { mutableStateOf("Grant a source and target directory to begin.") }
+    var status by remember {
+        mutableStateOf(
+            when {
+                unavailableTarget -> "Target directory permission was revoked. Select it again."
+                unavailableSources -> "One or more source directory permissions were revoked."
+                else -> "Grant a source and target directory to begin."
+            },
+        )
+    }
     var recoveryChecked by remember { mutableStateOf(false) }
     var scanJob by remember { mutableStateOf<Job?>(null) }
     var conflict by remember { mutableStateOf<AndroidConflict?>(null) }

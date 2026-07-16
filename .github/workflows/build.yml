@@ -22,7 +22,7 @@ jobs:
       - name: Grant Gradle wrapper permission
         run: chmod +x kotlin-core/gradlew
       - name: Test v2 and compile Android debug
-        run: ./kotlin-core/gradlew -p compose check :storage-nio:test :android-app:assembleDebug --no-daemon --console=plain
+        run: ./kotlin-core/gradlew -p compose check :storage-nio:test :storage-saf:assembleDebugAndroidTest :android-app:assembleDebug --no-daemon --console=plain
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

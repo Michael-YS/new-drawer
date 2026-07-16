@@ -85,6 +85,29 @@ class NioStorageGatewayTest {
     }
 
     @Test
+    fun `scan reports magic-only image data as unreadable instead of queuing it`() = runBlocking {
+        val root = Files.createTempDirectory("drawer-nio-corrupt-image")
+        try {
+            val corrupt = root.resolve("corrupt.png")
+            Files.write(corrupt, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+            val gateway = NioStorageGateway()
+            val rootRef = gateway.directory(root)
+
+            val events = scanImages(
+                roots = listOf(SourceRoot("source", rootRef, "source", available = true)),
+                excludedDirectories = emptySet(),
+                storage = gateway,
+                suppressionStore = NeverSuppressed,
+            ).toList()
+
+            assertTrue(events.none { it is ScanEvent.PhotoDiscovered })
+            assertTrue(events.any { it is ScanEvent.Problem && it.detail == "Image data cannot be decoded" })
+        } finally {
+            Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+
+    @Test
     fun `Windows reserved directory names are rejected`() = runBlocking {
         val root = Files.createTempDirectory("drawer-nio-reserved")
         try {

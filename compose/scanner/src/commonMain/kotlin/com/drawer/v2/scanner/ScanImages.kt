@@ -51,17 +51,24 @@ fun scanImages(
                     StorageEntryKind.DIRECTORY -> if (entry.ref !in excludedDirectories) directories.add(entry.ref)
                     StorageEntryKind.OTHER -> Unit
                     StorageEntryKind.FILE -> {
-                        val metadata = runCatching { storage.metadata(entry.ref) }.getOrNull() ?: entry.metadata
+                        val metadata = runCatching { storage.metadata(entry.ref) }.getOrElse {
+                            emit(ScanEvent.Problem(entry.ref, it.message ?: "Unable to read file metadata"))
+                            return@forEach
+                        }
                         if (metadata == null) {
-                            emit(ScanEvent.Problem(entry.ref, "无法读取文件元信息"))
+                            emit(ScanEvent.Problem(entry.ref, "Unable to read file metadata"))
                             return@forEach
                         }
                         val prefix = runCatching { storage.readPrefix(entry.ref, IMAGE_SIGNATURE_BYTES) }
                             .getOrElse {
                                 emit(ScanEvent.Problem(entry.ref, it.message ?: "无法读取文件"))
                                 return@forEach
-                            }
+                        }
                         if (!isSupportedImage(prefix)) return@forEach
+                        if (metadata.width == null || metadata.height == null) {
+                            emit(ScanEvent.Problem(entry.ref, "Image data cannot be decoded"))
+                            return@forEach
+                        }
 
                         val fingerprint = FileFingerprint(metadata.sizeBytes, metadata.modifiedAtEpochMs)
                         if (suppressionStore.isSuppressed(root.id, entry.ref, fingerprint)) return@forEach

@@ -36,7 +36,8 @@ Android APK 输出在 `compose/android-app/build/outputs/apk/debug/`；Windows M
 ## CI 与发布
 
 - 每次 push/PR：GitHub Actions 运行 Compose 测试、Android debug 构建和 Windows 客户端编译。
-- `v*` 标签：验证通过后构建 Windows MSI 与签名 Android release APK，上传至 GitHub Release。
+- `v*` 标签：验证通过后构建 Windows MSI、签名 Android release APK 和 AAB，并上传至 GitHub Release。
 - Android 标签发布需要仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。缺少任意一个会明确失败，避免把 debug/未签名 APK 当作发布包。
+- Windows 代码签名使用可选的 `WINDOWS_CERTIFICATE_BASE64`（PFX）与 `WINDOWS_CERTIFICATE_PASSWORD`。两者齐全时，工作流会签名并验证 MSI；未配置时仍会构建，但发布资产会明确命名为 `-unsigned.msi`。
 
 完整的产品边界、数据安全约束和后续阶段见 [`refactor.md`](refactor.md)。

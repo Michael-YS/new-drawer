@@ -75,7 +75,7 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/drawer-release.jks"
-      - name: Build signed Android APK
+      - name: Build signed Android APK and AAB
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/drawer-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -84,11 +84,16 @@ jobs:
         run: |
           export DRAWER_RELEASE_VERSION="${GITHUB_REF_NAME#v}"
           export DRAWER_RELEASE_VERSION_CODE="$GITHUB_RUN_NUMBER"
-          ./kotlin-core/gradlew -p compose :android-app:assembleRelease --no-daemon --console=plain
+          ./kotlin-core/gradlew -p compose :android-app:assembleRelease :android-app:bundleRelease --no-daemon --console=plain
       - uses: actions/upload-artifact@v4
         with:
           name: android-release
           path: compose/android-app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release-bundle
+          path: compose/android-app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
   release-windows:
@@ -105,10 +110,30 @@ jobs:
           cache: gradle
       - name: Build Windows MSI
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           $env:DRAWER_RELEASE_VERSION = $version
           .\kotlin-core\gradlew.bat -p compose :desktop-app:packageMsi --no-daemon --console=plain
+          $msi = Get-ChildItem 'compose/desktop-app/build/compose/binaries/main/msi/*.msi' | Select-Object -First 1
+          if ($null -eq $msi) { throw 'MSI package was not produced' }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Rename-Item -LiteralPath $msi.FullName -NewName "Drawer-v$version-unsigned.msi"
+            Write-Host 'Windows signing certificate is not configured; publishing an explicitly unsigned MSI.'
+          } else {
+            if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+              throw 'WINDOWS_CERTIFICATE_PASSWORD is required when WINDOWS_CERTIFICATE_BASE64 is set'
+            }
+            $certificate = Join-Path $env:RUNNER_TEMP 'drawer-windows-release.pfx'
+            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+            $signtool = (Get-Command signtool.exe -ErrorAction Stop).Source
+            & $signtool sign /fd SHA256 /f $certificate /p $env:WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $msi.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'MSI signing failed' }
+            & $signtool verify /pa $msi.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'MSI signature verification failed' }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-msi

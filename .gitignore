@@ -1,5 +1,6 @@
 missing_zh.txt
 compose/local.properties
 compose/.gradle/
+compose/.kotlin/
 compose/build/
 compose/**/build/

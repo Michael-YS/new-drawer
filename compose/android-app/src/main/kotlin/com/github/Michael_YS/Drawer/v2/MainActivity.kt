@@ -51,6 +51,7 @@ import com.drawer.v2.domain.FileFingerprint
 import com.drawer.v2.domain.MediaMetadata
 import com.drawer.v2.domain.PhotoCandidate
 import com.drawer.v2.domain.SourceRoot
+import com.drawer.v2.domain.SessionSummary
 import com.drawer.v2.domain.StorageRef
 import com.drawer.v2.domain.SuppressedItem
 import com.drawer.v2.domain.SuppressionReason
@@ -114,6 +115,7 @@ private fun AndroidDrawerApp() {
     var sources by remember { mutableStateOf(configuration.sourceRoots()) }
     var target by remember { mutableStateOf(configuration.targetRoot()) }
     var photos by remember { mutableStateOf(emptyList<PhotoCandidate>()) }
+    var sessionSummary by remember { mutableStateOf(SessionSummary()) }
     var categories by remember { mutableStateOf(emptyList<String>()) }
     var status by remember { mutableStateOf("Grant a source and target directory to begin.") }
     var recoveryChecked by remember { mutableStateOf(false) }
@@ -181,8 +183,17 @@ private fun AndroidDrawerApp() {
                                 .sortedByDescending { it.metadata.modifiedAtEpochMs }
                         }
                     }
-                    is ScanEvent.Problem -> status = "Scan issue: ${event.detail}"
-                    ScanEvent.Completed -> status = if (photos.isEmpty()) "Scan complete. No pending photos." else "Scan complete."
+                    is ScanEvent.Problem -> {
+                        sessionSummary = sessionSummary.copy(unreadable = sessionSummary.unreadable + 1)
+                        status = "Scan issue: ${event.detail}"
+                    }
+                    ScanEvent.Completed -> {
+                        status = if (photos.isEmpty()) {
+                            "Scan complete. No pending photos. ${sessionSummary.display()}"
+                        } else {
+                            "Scan complete. ${sessionSummary.display()}"
+                        }
+                    }
                     is ScanEvent.DirectoryScanned -> Unit
                 }
             }
@@ -202,6 +213,7 @@ private fun AndroidDrawerApp() {
                 )
             }
             photos = photos - candidate
+            sessionSummary = sessionSummary.copy(skipped = sessionSummary.skipped + 1)
         }
     }
 
@@ -244,6 +256,7 @@ private fun AndroidDrawerApp() {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
                         photos = photos - candidate
                         undoStack = undoStack + SessionUndoEntry(result.undo, candidate)
+                        sessionSummary = sessionSummary.copy(moved = sessionSummary.moved + 1)
                         "Moved to $category."
                     }
                     is com.drawer.v2.transaction.SafeMoveResult.SourceDeleteFailed -> {
@@ -502,6 +515,7 @@ private fun AndroidDrawerApp() {
                             }
                             photos = photos - candidate
                             pendingSourceDelete = null
+                            sessionSummary = sessionSummary.copy(keptCopies = sessionSummary.keptCopies + 1)
                             status = "Kept both copies; the source is marked as handled."
                         }
                     }) { Text("Keep both") }

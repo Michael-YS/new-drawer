@@ -1,9 +1,24 @@
 package com.drawer.v2.storage.nio
 
+import com.drawer.v2.domain.FileFingerprint
+import com.drawer.v2.domain.OperationJournalEntry
+import com.drawer.v2.domain.OperationJournalStore
+import com.drawer.v2.domain.SourceRoot
+import com.drawer.v2.domain.StorageRef
+import com.drawer.v2.domain.SuppressedItem
+import com.drawer.v2.domain.SuppressionReason
+import com.drawer.v2.domain.SuppressionStore
+import com.drawer.v2.scanner.ScanEvent
+import com.drawer.v2.scanner.scanImages
 import com.drawer.v2.storage.StorageEntryKind
 import com.drawer.v2.storage.clearDirectoryContents
 import com.drawer.v2.storage.summarizeDirectory
+import com.drawer.v2.transaction.SafeMove
+import com.drawer.v2.transaction.SafeMoveRequest
+import com.drawer.v2.transaction.SafeMoveResult
+import com.drawer.v2.transaction.UndoResult
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.toList
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import java.nio.file.Files
@@ -11,6 +26,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class NioStorageGatewayTest {
@@ -101,4 +117,56 @@ class NioStorageGatewayTest {
             Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
         }
     }
+
+    @Test
+    fun `scan move and undo use real NIO directories`() = runBlocking {
+        val root = Files.createTempDirectory("drawer-nio-journey")
+        try {
+            val source = Files.createDirectories(root.resolve("source"))
+            val target = Files.createDirectories(source.resolve("organized"))
+            val incoming = source.resolve("incoming.png")
+            ImageIO.write(BufferedImage(5, 3, BufferedImage.TYPE_INT_RGB), "png", incoming.toFile())
+            ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", target.resolve("must-not-scan.png").toFile())
+            val gateway = NioStorageGateway()
+            val sourceRef = gateway.directory(source)
+            val targetRef = gateway.directory(target)
+
+            val discovered = scanImages(
+                roots = listOf(SourceRoot("source", sourceRef, "source", available = true)),
+                excludedDirectories = setOf(targetRef),
+                storage = gateway,
+                suppressionStore = NeverSuppressed,
+            ).toList().filterIsInstance<ScanEvent.PhotoDiscovered>()
+
+            assertEquals(1, discovered.size)
+            val candidate = discovered.single().photo
+            assertEquals("incoming.png", candidate.metadata.name)
+            val family = gateway.ensureDirectory(targetRef, "Family")
+            val result = SafeMove(gateway, MemoryJournal).execute(
+                SafeMoveRequest("move-1", candidate.file, candidate.parent, candidate.metadata.name, family, candidate.metadata.name),
+            )
+            val completed = assertIs<SafeMoveResult.Completed>(result)
+            assertFalse(Files.exists(incoming))
+            assertTrue(Files.exists(target.resolve("Family/incoming.png")))
+
+            assertIs<UndoResult.Completed>(SafeMove(gateway, MemoryJournal).undo(completed.undo))
+            assertTrue(Files.exists(incoming))
+            assertFalse(Files.exists(target.resolve("Family/incoming.png")))
+        } finally {
+            Files.walk(root).sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+}
+
+private object NeverSuppressed : SuppressionStore {
+    override suspend fun isSuppressed(sourceRootId: String, file: StorageRef, fingerprint: FileFingerprint) = false
+    override suspend fun suppress(item: SuppressedItem) = Unit
+    override suspend fun clear(reason: SuppressionReason) = Unit
+}
+
+private object MemoryJournal : OperationJournalStore {
+    private var entry: OperationJournalEntry? = null
+    override suspend fun active() = entry
+    override suspend fun replace(entry: OperationJournalEntry) { this.entry = entry }
+    override suspend fun clear() { entry = null }
 }

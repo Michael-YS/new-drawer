@@ -74,6 +74,9 @@ import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
 import com.drawer.v2.transaction.SessionUndo
 import com.drawer.v2.transaction.UndoResult
+import com.drawer.v2.ui.ConflictDialog
+import com.drawer.v2.ui.DrawerApp
+import com.drawer.v2.ui.metadataSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -350,98 +353,40 @@ private fun AndroidDrawerApp() {
     }
     LaunchedEffect(sources, target, recoveryChecked) { if (recoveryChecked) scan() }
 
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("Drawer v2", style = MaterialTheme.typography.headlineMedium)
-                Text(status)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { sourcePicker.launch(null) }) { Text("Add source") }
-                    OutlinedButton(onClick = { targetPicker.launch(null) }) { Text("Choose target") }
-                    OutlinedButton(onClick = {
-                        settingsOpen = true
-                        scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, configuration.trashRoots()) } }
-                    }) { Text("Settings") }
-                    OutlinedButton(
-                        enabled = undoStack.isNotEmpty(),
-                        onClick = ::undoLastMove,
-                    ) { Text("Undo last move") }
-                }
-                Text("Target: ${target?.displayName ?: "not selected"}")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    sources.forEach { source ->
-                        FilterChip(selected = true, onClick = {
-                            requestDirectoryChange {
-                                configuration.removeSourceRoot(source.id)
-                                sources = sources - source
-                            }
-                        }, label = { Text("${source.displayName} ×") })
-                    }
-                }
-                AndroidPhoto(photos.firstOrNull(), Modifier.height(260.dp).fillMaxWidth())
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    categories.forEach { category ->
-                        Button(
-                            enabled = pendingSourceDelete == null,
-                            onClick = { photos.firstOrNull()?.let { move(it, category) } },
-                        ) { Text(category) }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(newCategory, { newCategory = it }, label = { Text("New category") }, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(8.dp))
-                    Button(onClick = {
-                        val name = newCategory.trim()
-                        val configuredTarget = target
-                        if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) {
-                            status = "$TRASH_DIRECTORY is reserved."
-                        } else if (name.isNotEmpty() && configuredTarget != null) scope.launch {
-                            runCatching {
-                                withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
-                            }
-                                .onSuccess {
-                                    configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis())
-                                    categories = configuration.categoryNames(configuredTarget)
-                                    newCategory = ""
-                                }
-                                .onFailure { status = "Invalid category: ${it.message}" }
-                        }
-                    }) { Text("Create") }
-                }
-                OutlinedButton(
-                    enabled = pendingSourceDelete == null,
-                    onClick = { photos.firstOrNull()?.let(::skip) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Skip for now") }
+    DrawerApp(
+        status, sources, target, photos.firstOrNull(), categories, newCategory, pendingSourceDelete == null,
+        undoStack.isNotEmpty(),
+        onAddSources = { sourcePicker.launch(null) },
+        onRemoveSource = { source -> requestDirectoryChange { configuration.removeSourceRoot(source.id); sources = sources - source } },
+        onChooseTarget = { targetPicker.launch(null) },
+        onSettings = { settingsOpen = true; scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, configuration.trashRoots()) } } },
+        onUndo = ::undoLastMove,
+        onCategory = { category -> photos.firstOrNull()?.let { candidate -> move(candidate, category) } },
+        onNewCategoryChanged = { newCategory = it },
+        onCreateCategory = {
+            val name = newCategory.trim()
+            val configuredTarget = target
+            if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) status = "$TRASH_DIRECTORY is reserved."
+            else if (name.isNotEmpty() && configuredTarget != null) scope.launch {
+                runCatching { withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) } }
+                    .onSuccess { configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis()); categories = configuration.categoryNames(configuredTarget); newCategory = "" }
+                    .onFailure { status = "Invalid category: ${it.message}" }
             }
-        }
-    }
+        },
+        onSkip = { photos.firstOrNull()?.let(::skip) },
+        preview = { ref, modifier -> AndroidImage(ref, modifier) },
+    )
 
     conflict?.let { current ->
-        AlertDialog(
-            onDismissRequest = { conflict = null },
-            title = { Text("A photo with this name already exists") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Incoming:\n${metadataSummary(current.candidate.metadata)}")
-                    AndroidImage(current.candidate.file, Modifier.height(120.dp).fillMaxWidth())
-                    Text(current.existing.metadata?.let { "Existing:\n${metadataSummary(it)}" } ?: "Existing metadata unavailable")
-                    AndroidImage(current.existing.ref, Modifier.height(120.dp).fillMaxWidth())
-                }
-            },
-            confirmButton = { Button(onClick = { confirmOverwrite = current; conflict = null }) { Text("Overwrite") } },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { skip(current.candidate); conflict = null }) { Text("Skip") }
-                    OutlinedButton(onClick = { renameTo = suggestedName(current.candidate.metadata.name); renameConflict = current; conflict = null }) { Text("Rename") }
-                }
-            },
+        ConflictDialog(
+            incoming = current.candidate,
+            existingFile = current.existing.ref,
+            existingMetadata = current.existing.metadata,
+            onSkip = { skip(current.candidate); conflict = null },
+            onRename = { renameTo = suggestedName(current.candidate.metadata.name); renameConflict = current; conflict = null },
+            onOverwrite = { confirmOverwrite = current; conflict = null },
+            onDismiss = { conflict = null },
+            preview = { ref, modifier -> AndroidImage(ref, modifier) },
         )
     }
     renameConflict?.let { current ->
@@ -602,18 +547,6 @@ private fun AndroidDrawerApp() {
 }
 
 @Composable
-private fun AndroidPhoto(photo: PhotoCandidate?, modifier: Modifier = Modifier) {
-    if (photo == null) {
-        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text("No pending photo") }
-    } else {
-        Column {
-            AndroidImage(photo.file, modifier)
-            Text(metadataSummary(photo.metadata))
-        }
-    }
-}
-
-@Composable
 private fun AndroidImage(ref: StorageRef, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, ref) {
@@ -640,14 +573,6 @@ private fun decodePreview(context: android.content.Context, ref: StorageRef): an
         }
         context.contentResolver.openInputStream(documentUri).use { BitmapFactory.decodeStream(it, null, options) }?.asImageBitmap()
     }.getOrNull()
-
-private fun metadataSummary(metadata: MediaMetadata): String = buildString {
-    append(metadata.name)
-    append("\n${metadata.sizeBytes} bytes")
-    if (metadata.width != null && metadata.height != null) append("\n${metadata.width} × ${metadata.height}")
-    metadata.createdAtEpochMs?.let { append("\nCreated: $it") }
-    append("\nModified: ${metadata.modifiedAtEpochMs}")
-}
 
 private suspend fun uniqueTrashName(storage: SafStorageGateway, trash: StorageRef, original: String): String {
     if (storage.findChild(trash, original) == null) return original

@@ -2,27 +2,19 @@ package com.drawer.v2.desktop
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -45,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.drawer.v2.domain.FileFingerprint
-import com.drawer.v2.domain.MediaMetadata
 import com.drawer.v2.domain.PhotoCandidate
 import com.drawer.v2.domain.SourceRoot
 import com.drawer.v2.domain.SessionSummary
@@ -70,6 +61,8 @@ import com.drawer.v2.transaction.SafeMove
 import com.drawer.v2.transaction.SafeMoveRequest
 import com.drawer.v2.transaction.SessionUndo
 import com.drawer.v2.transaction.UndoResult
+import com.drawer.v2.ui.ConflictDialog
+import com.drawer.v2.ui.DrawerApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -104,7 +97,6 @@ private data class SessionUndoEntry(
 )
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 private fun DesktopDrawerApp() {
     val storage = remember { NioStorageGateway() }
     val database = remember {
@@ -302,111 +294,59 @@ private fun DesktopDrawerApp() {
     }
     LaunchedEffect(sources, target, recoveryChecked) { if (recoveryChecked) scan() }
 
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("Drawer v2", style = MaterialTheme.typography.headlineMedium)
-                Text(status, style = MaterialTheme.typography.bodyMedium)
-                DirectoryControls(
-                    sources = sources,
-                    target = target,
-                    onAddSources = {
-                        chooseDirectories().map { path ->
-                            SourceRoot(UUID.randomUUID().toString(), storage.directory(path), path.fileName.toString(), true)
-                        }.filter { newRoot -> sources.none { it.directory == newRoot.directory } }
-                            .let { selected ->
-                                val targetPath = target?.directory?.token?.let { Path.of(it).toAbsolutePath().normalize() }
-                                val valid = selected.filter { root ->
-                                    targetPath == null || !Path.of(root.directory.token).toAbsolutePath().normalize().startsWith(targetPath)
-                                }
-                                if (valid.size != selected.size) {
-                                    status = "A source directory inside the target directory was ignored."
-                                }
-                                val effective = valid.filter { root ->
-                                    val rootPath = Path.of(root.directory.token).toAbsolutePath().normalize()
-                                    sources.none { existing -> rootPath.startsWith(Path.of(existing.directory.token).toAbsolutePath().normalize()) } &&
-                                        valid.none { other ->
-                                            other != root && rootPath.startsWith(Path.of(other.directory.token).toAbsolutePath().normalize())
-                                        }
-                                }
-                                val replacedNestedSources = sources.filter { existing ->
-                                    val existingPath = Path.of(existing.directory.token).toAbsolutePath().normalize()
-                                    effective.any { root -> existingPath.startsWith(Path.of(root.directory.token).toAbsolutePath().normalize()) }
-                                }
-                                if (effective.isNotEmpty()) requestDirectoryChange {
-                                    replacedNestedSources.forEach { configuration.removeSourceRoot(it.id) }
-                                    effective.forEach(configuration::saveSourceRoot)
-                                    sources = (sources - replacedNestedSources) + effective
-                                }
-                            }
-                    },
-                    onRemoveSource = { root ->
-                        requestDirectoryChange {
-                            configuration.removeSourceRoot(root.id)
-                            sources = sources - root
-                        }
-                    },
-                    onChooseTarget = {
-                        chooseDirectory()?.let { path ->
-                            val chosen = TargetRoot(storage.directory(path), path.fileName.toString())
-                            val chosenPath = Path.of(chosen.directory.token).toAbsolutePath().normalize()
-                            if (sources.any { Path.of(it.directory.token).toAbsolutePath().normalize().startsWith(chosenPath) }) {
-                                status = "The target cannot contain an existing source directory."
-                            } else {
-                                requestDirectoryChange {
-                                    target = chosen
-                                    configuration.saveTargetRoot(chosen)
-                                }
-                            }
-                        }
-                    },
-                    onSettings = {
-                        settingsOpen = true
-                        scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, configuration.trashRoots()) } }
-                    },
-                    onUndo = if (undoStack.isNotEmpty()) ::undoLastMove else null,
-                )
-                PhotoPanel(photos.firstOrNull(), Modifier.weight(1f).fillMaxWidth())
-                CategoryPanel(
-                    categories = categories,
-                    newCategory = newCategory,
-                    onNewCategoryChanged = { newCategory = it },
-                    onCreate = {
-                        val name = newCategory.trim()
-                        if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) {
-                            status = "$TRASH_DIRECTORY is reserved."
-                        } else if (name.isNotEmpty()) {
-                            val configuredTarget = target
-                            if (configuredTarget != null) {
-                                scope.launch {
-                                    runCatching {
-                                        withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) }
-                                    }
-                                        .onSuccess {
-                                            configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis())
-                                            categories = configuration.categoryNames(configuredTarget)
-                                            newCategory = ""
-                                        }
-                                        .onFailure { status = "Invalid category: ${it.message}" }
-                                }
-                            }
-                        }
-                    },
-                    movesEnabled = pendingSourceDelete == null,
-                    onCategory = { photos.firstOrNull()?.let { candidate -> move(candidate, it) } },
-                    onSkip = { photos.firstOrNull()?.let(::skip) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+    DrawerApp(
+        status, sources, target, photos.firstOrNull(), categories, newCategory, pendingSourceDelete == null,
+        undoStack.isNotEmpty(),
+        onAddSources = {
+            chooseDirectories().map { path -> SourceRoot(UUID.randomUUID().toString(), storage.directory(path), path.fileName.toString(), true) }
+                .filter { newRoot -> sources.none { it.directory == newRoot.directory } }.let { selected ->
+                    val targetPath = target?.directory?.token?.let { Path.of(it).toAbsolutePath().normalize() }
+                    val valid = selected.filter { root -> targetPath == null || !Path.of(root.directory.token).toAbsolutePath().normalize().startsWith(targetPath) }
+                    if (valid.size != selected.size) status = "A source directory inside the target directory was ignored."
+                    val effective = valid.filter { root ->
+                        val rootPath = Path.of(root.directory.token).toAbsolutePath().normalize()
+                        sources.none { rootPath.startsWith(Path.of(it.directory.token).toAbsolutePath().normalize()) } &&
+                            valid.none { it != root && rootPath.startsWith(Path.of(it.directory.token).toAbsolutePath().normalize()) }
+                    }
+                    val replaced = sources.filter { existing -> effective.any { Path.of(existing.directory.token).toAbsolutePath().normalize().startsWith(Path.of(it.directory.token).toAbsolutePath().normalize()) } }
+                    if (effective.isNotEmpty()) requestDirectoryChange {
+                        replaced.forEach { configuration.removeSourceRoot(it.id) }
+                        effective.forEach(configuration::saveSourceRoot)
+                        sources = (sources - replaced) + effective
+                    }
+                }
+        },
+        onRemoveSource = { root -> requestDirectoryChange { configuration.removeSourceRoot(root.id); sources = sources - root } },
+        onChooseTarget = {
+            chooseDirectory()?.let { path ->
+                val chosen = TargetRoot(storage.directory(path), path.fileName.toString())
+                if (sources.any { Path.of(it.directory.token).toAbsolutePath().normalize().startsWith(Path.of(chosen.directory.token).toAbsolutePath().normalize()) }) {
+                    status = "The target cannot contain an existing source directory."
+                } else requestDirectoryChange { target = chosen; configuration.saveTargetRoot(chosen) }
             }
-        }
-    }
+        },
+        onSettings = { settingsOpen = true; scope.launch { trashSummary = withContext(Dispatchers.IO) { readTrashSummary(storage, configuration.trashRoots()) } } },
+        onUndo = ::undoLastMove,
+        onCategory = { category -> photos.firstOrNull()?.let { candidate -> move(candidate, category) } },
+        onNewCategoryChanged = { newCategory = it },
+        onCreateCategory = {
+            val name = newCategory.trim()
+            if (name.equals(TRASH_DIRECTORY, ignoreCase = true)) status = "$TRASH_DIRECTORY is reserved."
+            else target?.let { configuredTarget -> if (name.isNotEmpty()) scope.launch {
+                runCatching { withContext(Dispatchers.IO) { storage.ensureDirectory(configuredTarget.directory, name) } }
+                    .onSuccess { configuration.categoryFirstSeen(configuredTarget, name, System.currentTimeMillis()); categories = configuration.categoryNames(configuredTarget); newCategory = "" }
+                    .onFailure { status = "Invalid category: ${it.message}" }
+            } }
+        },
+        onSkip = { photos.firstOrNull()?.let(::skip) },
+        preview = { ref, modifier -> DesktopPhoto(ref.token, modifier) },
+    )
 
     conflict?.let { current ->
         ConflictDialog(
-            conflict = current,
+            incoming = current.candidate,
+            existingFile = current.existing.ref,
+            existingMetadata = current.existing.metadata,
             onSkip = { skip(current.candidate); conflict = null },
             onRename = {
                 renameTo = suggestedName(current.candidate.metadata.name)
@@ -415,6 +355,7 @@ private fun DesktopDrawerApp() {
             },
             onOverwrite = { confirmOverwrite = current; conflict = null },
             onDismiss = { conflict = null },
+            preview = { ref, modifier -> DesktopPhoto(ref.token, modifier) },
         )
     }
     renameConflict?.let { current ->
@@ -576,135 +517,6 @@ private fun DesktopDrawerApp() {
             dismissButton = { OutlinedButton(onClick = { pendingDirectoryChange = null }) { Text("Keep current scan") } },
         )
     }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun DirectoryControls(
-    sources: List<SourceRoot>,
-    target: TargetRoot?,
-    onAddSources: () -> Unit,
-    onRemoveSource: (SourceRoot) -> Unit,
-    onChooseTarget: () -> Unit,
-    onSettings: () -> Unit,
-    onUndo: (() -> Unit)?,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onAddSources) { Text("Add source directories") }
-            OutlinedButton(onClick = onChooseTarget) { Text("Choose target directory") }
-            OutlinedButton(onClick = onSettings) { Text("Settings") }
-            OutlinedButton(enabled = onUndo != null, onClick = { onUndo?.invoke() }) { Text("Undo last move") }
-            Text("Target: ${target?.displayName ?: "not selected"}")
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            sources.forEach { source ->
-                FilterChip(selected = true, onClick = { onRemoveSource(source) }, label = { Text("${source.displayName} ×") })
-            }
-        }
-    }
-}
-
-@Composable
-private fun PhotoPanel(photo: PhotoCandidate?, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.fillMaxWidth(), tonalElevation = 1.dp) {
-        if (photo == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No pending photo") }
-        } else {
-            Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DesktopPhoto(photo.file.token, Modifier.weight(1f).fillMaxWidth())
-                PhotoMetadata(photo)
-            }
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun CategoryPanel(
-    categories: List<String>,
-    newCategory: String,
-    onNewCategoryChanged: (String) -> Unit,
-    onCreate: () -> Unit,
-    movesEnabled: Boolean,
-    onCategory: (String) -> Unit,
-    onSkip: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(modifier = modifier.fillMaxWidth(), tonalElevation = 1.dp) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Categories", style = MaterialTheme.typography.titleMedium)
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                categories.forEach { category ->
-                    Button(enabled = movesEnabled, onClick = { onCategory(category) }) { Text(category) }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newCategory,
-                    onValueChange = onNewCategoryChanged,
-                    label = { Text("New category") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = onCreate) { Text("Create") }
-            }
-            OutlinedButton(enabled = movesEnabled, onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Skip for now") }
-        }
-    }
-}
-
-@Composable
-private fun ConflictDialog(
-    conflict: Conflict,
-    onSkip: () -> Unit,
-    onRename: () -> Unit,
-    onOverwrite: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("A photo with this name already exists") },
-        text = {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Text("Incoming")
-                    DesktopPhoto(conflict.candidate.file.token, Modifier.height(140.dp).fillMaxWidth())
-                    PhotoMetadata(conflict.candidate)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("Existing")
-                    DesktopPhoto(conflict.existing.ref.token, Modifier.height(140.dp).fillMaxWidth())
-                    val metadata = conflict.existing.metadata
-                    Text(metadata?.let(::metadataSummary) ?: "Metadata unavailable")
-                }
-            }
-        },
-        confirmButton = { Button(onClick = onOverwrite) { Text("Overwrite") } },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onSkip) { Text("Skip") }
-                OutlinedButton(onClick = onRename) { Text("Rename") }
-            }
-        },
-    )
-}
-
-@Composable
-private fun PhotoMetadata(photo: PhotoCandidate) {
-    Text(metadataSummary(photo.metadata))
-}
-
-private fun metadataSummary(metadata: MediaMetadata): String = buildString {
-    append(metadata.name)
-    append("\n${metadata.sizeBytes} bytes")
-    if (metadata.width != null && metadata.height != null) append("\n${metadata.width} × ${metadata.height}")
-    metadata.createdAtEpochMs?.let { append("\nCreated: $it") }
-    append("\nModified: ${metadata.modifiedAtEpochMs}")
 }
 
 @Composable

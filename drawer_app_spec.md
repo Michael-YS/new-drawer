@@ -1,4 +1,6 @@
-# Photo Organizer App — 开发规格文档
+# 历史资料：Flutter Photo Organizer App 开发规格
+
+> **不再是当前实现或验收依据。** 本文描述 Flutter v1 设想，保留为行为参考。当前交付路径是 Kotlin + Compose Multiplatform，权威入口见仓库根目录的 `README.md`、`refactor.md` 与 `docs/`。
 
 ## 项目概述
 

@@ -12,6 +12,13 @@ import com.drawer.v2.domain.SuppressionReason
 import com.drawer.v2.domain.SuppressionStore
 import com.drawer.v2.domain.TargetRoot
 
+/**
+ * SQLDelight backing store for the one durable file-operation journal entry.
+ *
+ * The journal is intentionally a singleton: a later operation must never
+ * overwrite an unresolved earlier one, because startup recovery relies on it
+ * to decide whether it is safe to delete any source file.
+ */
 class SqlDelightOperationJournalStore(
     private val database: DrawerDatabase,
 ) : OperationJournalStore {
@@ -72,6 +79,11 @@ class SqlDelightOperationJournalStore(
     }
 }
 
+/**
+ * Stores user decisions that suppress an otherwise eligible source file.
+ * A record matches only while its source root, opaque reference and file
+ * fingerprint still match, so changing a file makes it eligible again.
+ */
 class SqlDelightSuppressionStore(
     private val database: DrawerDatabase,
 ) : SuppressionStore {
@@ -104,6 +116,10 @@ class SqlDelightSuppressionStore(
     }
 }
 
+/**
+ * Persists directory configuration and category ordering, but not a scan
+ * queue or undo stack. Those are deliberately limited to one app session.
+ */
 class SqlDelightConfigurationStore(
     private val database: DrawerDatabase,
 ) {

@@ -1,4 +1,6 @@
-# android-native-module
+# android-native-module（历史资料）
+
+> **不参与 Drawer v2 的构建、测试或发布。** 本文描述旧 Kotlin/React Native 方向，仅保留作历史参考。当前 Android 客户端位于 `../../compose/android-app/`，使用 Compose 与 `:storage-saf`；请从仓库根目录的 `README.md` 和 `docs/` 开始。
 
 Android-side counterpart to `:server-ktor`. Provides:
 

@@ -156,7 +156,20 @@ class SafStorageGateway(private val context: Context) : StorageGateway {
             true
         }
 
-    override suspend fun exists(ref: StorageRef): Boolean = metadata(ref) != null
+    override suspend fun exists(ref: StorageRef): Boolean {
+        // Validate the opaque reference before treating provider lookup errors as
+        // a missing document. ExternalStorageProvider reports a document that
+        // was just deleted as IllegalArgumentException (wrapping a
+        // FileNotFoundException), rather than returning an empty cursor.
+        token(ref)
+        return try {
+            metadata(ref) != null
+        } catch (_: FileNotFoundException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
 
     private fun entryFromCursor(treeUri: Uri, parent: StorageRef, cursor: Cursor): StorageEntry {
         val id = cursor.string(DocumentsContract.Document.COLUMN_DOCUMENT_ID)

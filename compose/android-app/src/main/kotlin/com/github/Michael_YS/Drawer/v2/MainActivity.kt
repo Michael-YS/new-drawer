@@ -76,6 +76,7 @@ import com.drawer.v2.transaction.SessionUndo
 import com.drawer.v2.transaction.UndoResult
 import com.drawer.v2.ui.ConflictDialog
 import com.drawer.v2.ui.DrawerApp
+import com.drawer.v2.ui.DrawerTheme
 import com.drawer.v2.ui.metadataSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,7 +89,7 @@ import java.util.UUID
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AndroidDrawerApp() }
+        setContent { DrawerTheme { AndroidDrawerApp() } }
     }
 }
 
@@ -271,6 +272,10 @@ private fun AndroidDrawerApp() {
                 }
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
+                        categories = withContext(Dispatchers.IO) {
+                            configuration.categoryUsed(configuredTarget, category, System.currentTimeMillis())
+                            configuration.categoryNames(configuredTarget)
+                        }
                         photos = photos - candidate
                         undoStack = undoStack + SessionUndoEntry(result.undo, candidate)
                         sessionSummary = sessionSummary.copy(moved = sessionSummary.moved + 1)

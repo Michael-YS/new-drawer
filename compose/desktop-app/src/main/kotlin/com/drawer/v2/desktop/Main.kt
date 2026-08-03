@@ -63,6 +63,7 @@ import com.drawer.v2.transaction.SessionUndo
 import com.drawer.v2.transaction.UndoResult
 import com.drawer.v2.ui.ConflictDialog
 import com.drawer.v2.ui.DrawerApp
+import com.drawer.v2.ui.DrawerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -80,7 +81,7 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Drawer v2",
     ) {
-        DesktopDrawerApp()
+        DrawerTheme { DesktopDrawerApp() }
     }
 }
 
@@ -246,6 +247,10 @@ private fun DesktopDrawerApp() {
                 }
                 status = when (result) {
                     is com.drawer.v2.transaction.SafeMoveResult.Completed -> {
+                        categories = withContext(Dispatchers.IO) {
+                            configuration.categoryUsed(configuredTarget, category, System.currentTimeMillis())
+                            configuration.categoryNames(configuredTarget)
+                        }
                         photos = photos - candidate
                         undoStack = undoStack + SessionUndoEntry(result.undo, candidate)
                         sessionSummary = sessionSummary.copy(moved = sessionSummary.moved + 1)

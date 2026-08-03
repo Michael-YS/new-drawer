@@ -8,6 +8,7 @@ import com.drawer.v2.domain.StorageBackend
 import com.drawer.v2.domain.StorageRef
 import com.drawer.v2.domain.SuppressedItem
 import com.drawer.v2.domain.SuppressionReason
+import com.drawer.v2.domain.TargetRoot
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,6 +62,18 @@ class SqlDelightStoresTest {
         SqlDelightConfigurationStore(createDesktopDrawerDatabase(file)).saveTargetRoot(target)
 
         assertEquals(target, SqlDelightConfigurationStore(createDesktopDrawerDatabase(file)).targetRoot())
+    }
+
+    @Test
+    fun `successful category use moves it to the front`() {
+        val store = SqlDelightConfigurationStore(database())
+        val target = TargetRoot(ref("target"), "Target")
+        store.categoryFirstSeen(target, "Family", 100)
+        store.categoryFirstSeen(target, "Travel", 200)
+
+        store.categoryUsed(target, "Family", 300)
+
+        assertEquals(listOf("Family", "Travel"), store.categoryNames(target))
     }
 
     private fun database(): DrawerDatabase {

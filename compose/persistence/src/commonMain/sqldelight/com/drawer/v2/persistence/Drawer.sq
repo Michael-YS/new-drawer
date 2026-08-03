@@ -95,6 +95,10 @@ upsertCategoryFirstSeen:
 INSERT OR IGNORE INTO category_first_seen(target_token, directory_name, first_seen_at_ms)
 VALUES (?, ?, ?);
 
+markCategoryUsed:
+INSERT OR REPLACE INTO category_first_seen(target_token, directory_name, first_seen_at_ms)
+VALUES (?, ?, ?);
+
 selectCategoryFirstSeen:
 SELECT * FROM category_first_seen WHERE target_token = ? ORDER BY first_seen_at_ms DESC;
 

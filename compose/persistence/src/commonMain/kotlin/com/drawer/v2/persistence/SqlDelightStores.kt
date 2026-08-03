@@ -162,6 +162,10 @@ class SqlDelightConfigurationStore(
         queries.upsertCategoryFirstSeen(target.directory.token, name, nowEpochMs)
     }
 
+    fun categoryUsed(target: TargetRoot, name: String, nowEpochMs: Long) {
+        queries.markCategoryUsed(target.directory.token, name, nowEpochMs)
+    }
+
     fun categoryNames(target: TargetRoot): List<String> = queries.selectCategoryFirstSeen(
         target_token = target.directory.token,
         mapper = { _, directoryName, _ -> directoryName },

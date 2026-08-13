@@ -30,6 +30,7 @@ compose.desktop {
             packageName = "Drawer-v2"
             packageVersion = releaseVersion
             windows {
+                iconFile.set(project.file("src/main/resources/drawer.ico"))
                 msiPackageVersion = releaseVersion
             }
         }

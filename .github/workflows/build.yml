@@ -60,6 +60,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - name: Grant Gradle wrapper permission
+        run: chmod +x kotlin-core/gradlew
       - name: Require signing secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
